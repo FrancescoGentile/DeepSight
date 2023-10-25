@@ -50,7 +50,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     """Evaluator for the Human-Object Interaction (HOI) task.
 
     The evaluator computes the accuracy, precision, recall, and F1 score of the
-    predictions. At the moment, only the macro-averaged metrics are supported.
+    predictions. At the moment, only the weighted-averaged metrics are supported.
     """
 
     def __init__(
@@ -89,10 +89,18 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
 
         self._metrics = MetricCollection(
             {
-                "accuracy": MultilabelAccuracy(num_labels=num_interaction_classes),
-                "precision": MultilabelPrecision(num_labels=num_interaction_classes),
-                "recall": MultilabelRecall(num_labels=num_interaction_classes),
-                "f1_score": MultilabelF1Score(num_labels=num_interaction_classes),
+                "accuracy": MultilabelAccuracy(
+                    num_labels=num_interaction_classes, average="weighted"
+                ),
+                "precision": MultilabelPrecision(
+                    num_labels=num_interaction_classes, average="weighted"
+                ),
+                "recall": MultilabelRecall(
+                    num_labels=num_interaction_classes, average="weighted"
+                ),
+                "f1_score": MultilabelF1Score(
+                    num_labels=num_interaction_classes, average="weighted"
+                ),
             }
         )
 

@@ -8,6 +8,7 @@ from typing import Annotated, Literal, overload
 
 import torch
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 from typing_extensions import Self
 
 from ._common import BatchMode
@@ -254,20 +255,10 @@ class CombinatorialComplex:
             case BatchMode.CONCAT:
                 return self._cell_features[rank]
             case BatchMode.STACK:
-                B = len(self._num_cells[rank])  # noqa
-                N = max(self._num_cells[rank])  # noqa
-                D = self._cell_features[rank].shape[1]  # noqa
-                cell_features = self._cell_features[rank].new_zeros((B, N, D))
-
-                offset = 0
-                for idx, num_cells in enumerate(self._num_cells[rank]):
-                    limit = offset + num_cells
-                    cell_features[idx, :num_cells].copy_(
-                        self._cell_features[rank][offset:limit]
-                    )
-                    offset = limit
-
-                return cell_features
+                return pad_sequence(
+                    self._cell_features[rank].split_with_sizes(self._num_cells[rank]),
+                    batch_first=True,
+                )
             case BatchMode.SEQUENCE:
                 return self._cell_features[rank].split_with_sizes(self._num_cells[rank])
 
@@ -569,7 +560,7 @@ class CombinatorialComplex:
         """
         return self.upper_degree_matrix(rank) - self.upper_laplacian_matrix(rank)
 
-    def replace(
+    def replace(  # noqa
         self,
         *args: tuple[
             Annotated[Tensor, "N D", Number]
@@ -604,7 +595,12 @@ class CombinatorialComplex:
             if isinstance(cell_feature, Tensor):
                 match cell_feature.ndim:
                     case 2:
-                        cell_feature = cell_feature
+                        if cell_feature.shape[0] != cell_features[rank].shape[0]:
+                            raise ValueError(
+                                f"Expected the number of cells of rank {rank} to be "
+                                f"{cell_features[rank].shape[0]}, "
+                                f"got {cell_feature.shape[0]}."
+                            )
                     case 3:
                         rank_cell_features = []
                         for idx, num_cells in enumerate(self._num_cells[rank]):
@@ -613,14 +609,15 @@ class CombinatorialComplex:
                     case _:
                         raise TypeError("Expected a matrix or a batched matrix.")
             else:
-                cell_feature = torch.cat(list(cell_feature), dim=0)
-                assert cell_feature.ndim == 2
+                # check that the number of cells for each batched complex is correct
+                for cf, ncells in zip(cell_feature, self._num_cells[rank], strict=True):
+                    if cf.shape[0] != ncells:
+                        raise ValueError(
+                            "The number of cells for each batched complex must remain "
+                            "the same when replacing the cell features."
+                        )
 
-            if cell_feature.shape[0] != cell_features[rank].shape[0]:
-                raise ValueError(
-                    f"Expected the number of cells of rank {rank} to be "
-                    f"{cell_features[rank].shape[0]}, got {cell_feature.shape[0]}."
-                )
+                cell_feature = torch.cat(list(cell_feature), dim=0)
 
             cell_features[rank] = cell_feature
 

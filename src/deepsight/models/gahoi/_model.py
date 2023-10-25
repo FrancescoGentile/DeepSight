@@ -14,7 +14,7 @@ from deepsight.models import DeepSightModel
 from deepsight.structures import (
     Batch,
     BatchedBoundingBoxes,
-    BatchedGraphs,
+    BatchMode,
     BoundingBoxes,
     Graph,
 )
@@ -112,23 +112,26 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
             for sample, features in zip(samples, node_features, strict=True)
         ]
 
-        graphs = BatchedGraphs.batch(graphs)
+        graphs = Graph.batch(graphs)
         batched_boxes = BatchedBoundingBoxes.batch(boxes)
 
         graphs = self.decoder(graphs, batched_boxes, images)
-        assert graphs.edge_features is not None
 
-        edge_indices = graphs.adjacency_matrix.indices()
-        first_node = graphs.edge_features[edge_indices[0]]
-        second_node = graphs.edge_features[edge_indices[1]]
+        edge_features = graphs.edge_features()
+        assert edge_features is not None
+
+        edge_indices = graphs.adjacency_matrix().indices()
+        first_node = edge_features[edge_indices[0]]
+        second_node = edge_features[edge_indices[1]]
         interaction_features = torch.cat(
-            [first_node, second_node, graphs.edge_features], dim=1
+            [first_node, second_node, edge_features], dim=1
         )
         interaction_logits = self.classifier(interaction_features)
+
         return Output(
-            num_nodes=[nodes for nodes, _ in graphs._graph_sizes],  # type: ignore
-            num_edges=[edges for _, edges in graphs._graph_sizes],  # type: ignore
-            interactions=graphs.adjacency_matrix.indices(),
+            num_nodes=list(graphs.num_nodes(BatchMode.SEQUENCE)),
+            num_edges=list(graphs.num_edges(BatchMode.SEQUENCE)),
+            interactions=graphs.adjacency_matrix().indices(),
             interaction_logits=interaction_logits,
         )
 

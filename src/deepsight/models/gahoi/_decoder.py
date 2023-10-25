@@ -8,7 +8,7 @@ import torch
 import torch.sparse
 from torch import Tensor, nn
 
-from deepsight.structures import BatchedBoundingBoxes, BatchedGraphs, BatchedSequences
+from deepsight.structures import BatchedBoundingBoxes, BatchMode, Graph
 from deepsight.utils.scatter import scatter_softmax, scatter_sum
 
 
@@ -83,15 +83,15 @@ class GraphAttention(nn.Module):
         self.out_proj = nn.Linear(node_dim, node_dim, bias=bias)
         self.proj_dropout = nn.Dropout(proj_dropout)
 
-    def forward(self, graphs: BatchedGraphs) -> BatchedGraphs:
-        ni = graphs.node_features[graphs.adjacency_matrix.indices()[0]]
-        nj = graphs.node_features[graphs.adjacency_matrix.indices()[1]]
+    def forward(self, graphs: Graph) -> Graph:
+        ni = graphs.node_features()[graphs.adjacency_matrix().indices()[0]]
+        nj = graphs.node_features()[graphs.adjacency_matrix().indices()[1]]
 
         ni_hidden = self.ni_proj(ni)
         nj_hidden = self.nj_proj(nj)
 
         if self.e_proj is not None:
-            if graphs.edge_features is None:
+            if graphs.edge_features() is None:
                 raise ValueError("edge features must be provided.")
             e_hidden = self.e_proj(graphs.edge_features)
             hidden = ni_hidden + nj_hidden + e_hidden
@@ -103,12 +103,13 @@ class GraphAttention(nn.Module):
         attn_logits = (hidden * self.attn_proj).sum(dim=-1)  # (E, H)
 
         attn_scores = scatter_softmax(
-            attn_logits, graphs.adjacency_matrix.indices()[0], dim=0
+            attn_logits, graphs.adjacency_matrix().indices()[0], dim=0
         )
         attn_scores = self.attn_dropout(attn_scores)
 
-        if graphs.edge_features is not None:
-            messages = torch.cat((nj, graphs.edge_features), dim=-1)
+        edge_features = graphs.edge_features()
+        if edge_features is not None:
+            messages = torch.cat((nj, edge_features), dim=-1)
         else:
             messages = nj
 
@@ -116,7 +117,7 @@ class GraphAttention(nn.Module):
         messages = messages.view(-1, self.num_heads, self.head_dim)
         messages = messages * attn_scores.unsqueeze(-1)
 
-        messages = scatter_sum(messages, graphs.adjacency_matrix.indices()[0], dim=0)
+        messages = scatter_sum(messages, graphs.adjacency_matrix().indices()[0], dim=0)
         messages = messages.view(-1, self.num_heads * self.head_dim)
 
         out = self.out_proj(messages)
@@ -124,7 +125,7 @@ class GraphAttention(nn.Module):
 
         return graphs.replace(node_features=out)
 
-    def __call__(self, graphs: BatchedGraphs) -> BatchedGraphs:
+    def __call__(self, graphs: Graph) -> Graph:
         """Update the node features by performing graph attention.
 
         Args:
@@ -186,14 +187,15 @@ class CrossAttention(nn.Module):
 
     def forward(
         self,
-        entities: BatchedSequences,  # (B, Q, D)
+        graph: Graph,
         images: Annotated[Tensor, "B K D"],
         relative_distances: Annotated[Tensor, "B Q K 2"],
-    ) -> BatchedSequences:
-        B, Q = entities.shape[:2]  # noqa
-        K = images.shape[1]  # noqa
+    ) -> Graph:
+        B, Q, K, _ = relative_distances.shape  # noqa
 
-        q = self.q_proj(entities.data)
+        nodes = graph.node_features(BatchMode.STACK)  # (B, Q, D)
+
+        q = self.q_proj(nodes)
         q = q.view(B, Q, self.num_heads, self.head_dim).transpose(1, 2)
 
         kv = self.kv_proj(images)
@@ -221,27 +223,27 @@ class CrossAttention(nn.Module):
         out = self.out_proj(out)
         out = self.proj_dropout(out)
 
-        return entities.replace(data=out)
+        return graph.replace(node_features=out)
 
     def __call__(
         self,
-        entities: BatchedSequences,  # (B, Q, D)
+        graph: Graph,
         images: Annotated[Tensor, "B K D"],
         relative_distances: Annotated[Tensor, "B Q K 2"],
-    ) -> BatchedSequences:
+    ) -> Graph:
         """Update the entities features by attending to the images.
 
         Args:
-            entities: The entities attending to the images.
+            graph: The graph containing the entities to update.
             images: The image features being attended to.
             relative_distances: The relative distances between the centers of the
                 bounding boxes of the entities and the position of each patch in the
                 images.
 
         Returns:
-            The updated entities.
+            The graph with the updated entities features.
         """
-        return super().__call__(entities, images, relative_distances)
+        return super().__call__(graph, images, relative_distances)
 
 
 class DecoderLayer(nn.Module):
@@ -277,7 +279,7 @@ class DecoderLayer(nn.Module):
         )
 
         self.layernorm3 = nn.LayerNorm(node_dim)
-        self.ff = nn.Sequential(
+        self.ffn = nn.Sequential(
             nn.Linear(node_dim, node_dim * 4),
             nn.GELU(),
             nn.Dropout(proj_dropout),
@@ -287,44 +289,35 @@ class DecoderLayer(nn.Module):
 
     def forward(
         self,
-        batched_graphs: BatchedGraphs,
+        graph: Graph,
         images: Annotated[Tensor, "B K D", float],
         relative_coords: Annotated[Tensor, "B Q K 2", float],
-    ) -> BatchedGraphs:
-        nodes_tensor = self.layernorm1(batched_graphs.node_features)
-        gat_graphs = batched_graphs.replace(node_features=nodes_tensor)
-        gat_graphs = self.gat(gat_graphs)
-        nodes_tensor = batched_graphs.node_features + gat_graphs.node_features
-        batched_graphs = batched_graphs.replace(node_features=nodes_tensor)
+    ) -> Graph:
+        nodes = graph.node_features()
+        nodes_norm = self.layernorm1(nodes)
+        graph = graph.replace(node_features=nodes_norm)
+        graph = self.gat(graph)
+        nodes = nodes + graph.node_features()
 
-        graphs = batched_graphs.unbatch()
-        entities = BatchedSequences.batch([g.node_features for g in graphs])
-        entities_tensor = self.layer_norm2(entities.data)
-        ca_entities = entities.replace(data=entities_tensor)
-        ca_entities = self.cross_attn(ca_entities, images, relative_coords)
-        entities_tensor = entities.data + ca_entities.data
+        nodes_norm = self.layernorm2(nodes)
+        graph = graph.replace(node_features=nodes_norm)
+        graph = self.cross_attn(graph, images, relative_coords)
+        nodes = nodes + graph.node_features()
 
-        ffn_entities = self.layer_norm3(entities_tensor)
-        ffn_entities = self.ff(ffn_entities)
-        entities_tensor = entities_tensor + ffn_entities
+        nodes_norm = self.layernorm3(nodes)
+        nodes = self.ffn(nodes_norm)
+        nodes = nodes + nodes_norm
 
-        entities = entities.replace(data=entities_tensor)
-        graphs = [
-            g.replace(node_features=n)
-            for g, n in zip(graphs, entities.unbatch(), strict=True)
-        ]
-        batched_graphs = BatchedGraphs.batch(graphs)
-
-        return batched_graphs
+        return graph.replace(node_features=nodes)
 
     def __call__(
         self,
-        batched_graphs: BatchedGraphs,
+        graph: Graph,
         images: Annotated[Tensor, "B K D", float],
         relative_coords: Annotated[Tensor, "B Q K 2", float],
-    ) -> BatchedGraphs:
+    ) -> Graph:
         """Update the node features by performing GAT, cross-attention, and FFN."""
-        return super().__call__(batched_graphs, images, relative_coords)
+        return super().__call__(graph, images, relative_coords)
 
 
 class Decoder(nn.Module):
@@ -356,10 +349,10 @@ class Decoder(nn.Module):
 
     def forward(
         self,
-        graphs: BatchedGraphs,
+        graphs: Graph,
         boxes: BatchedBoundingBoxes,
         images: Annotated[Tensor, "B C H W"],
-    ) -> BatchedGraphs:
+    ) -> Graph:
         relative_distances = _compute_relative_distances(boxes, images)
         flattened_images = images.flatten(start_dim=2).transpose(1, 2)  # (B, K, D)
 
@@ -370,10 +363,10 @@ class Decoder(nn.Module):
 
     def __call__(
         self,
-        graphs: BatchedGraphs,
+        graphs: Graph,
         boxes: BatchedBoundingBoxes,
         images: Annotated[Tensor, "B C H W"],
-    ) -> BatchedGraphs:
+    ) -> Graph:
         """Update the node features through the decoder layers."""
         return super().__call__(graphs, boxes, images)
 
