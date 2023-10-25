@@ -1,0 +1,15 @@
+site_name: DeepSight Docs
+
+theme:
+  name: "material"
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+plugins:
+  - mkdocstrings
+
+nav:
+  - Home: index.md

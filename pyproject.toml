@@ -1,0 +1,54 @@
+[project]
+name = "deepsight"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Francesco Gentile", email = "francesco.gentile@studenti.unitn.it"},
+]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.25.2",
+    "timm>=0.9.7",
+    "torchvision>=0.16.0",
+    "torchmetrics>=1.2.0",
+    "wandb>=0.15.12",
+    "tqdm>=4.66.1",
+    "scipy>=1.9.3",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.dev-dependencies]
+lint = [
+    "black>=23.9.1",
+    "ruff>=0.0.292",
+    "pyright>=1.1.330.post0",
+]
+docs = [
+    "mkdocs>=1.5.3",
+    "mkdocstrings[python]>=0.23.0",
+    "mkdocs-material>=9.4.4",
+]
+
+[tool.black]
+target-version = ["py310", "py311"]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+select = ["A", "ANN", "B", "C4", "C90", "D", "E", "F", "I", "N"]
+ignore = ["A003", "ANN101", "ANN102", "ANN401", "D104"]
+fixable = ["ALL"]
+fix = true
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.ruff.mccabe]
+max-complexity = 10
