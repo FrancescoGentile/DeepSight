@@ -18,7 +18,7 @@ A = TypeVar("A", bound=Moveable)
 P = TypeVar("P", bound=Moveable)
 
 
-class DeepSightModel(Generic[S, O, A, P], abc.ABC, nn.Module, Moveable, Stateful):
+class DeepSightModel(nn.Module, Moveable, Stateful, Generic[S, O, A, P], abc.ABC):
     """An interface for all models in DeepSight."""
 
     # ----------------------------------------------------------------------- #

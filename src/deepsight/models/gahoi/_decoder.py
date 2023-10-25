@@ -93,7 +93,7 @@ class GraphAttention(nn.Module):
         if self.e_proj is not None:
             if graphs.edge_features() is None:
                 raise ValueError("edge features must be provided.")
-            e_hidden = self.e_proj(graphs.edge_features)
+            e_hidden = self.e_proj(graphs.edge_features())
             hidden = ni_hidden + nj_hidden + e_hidden
         else:
             hidden = ni_hidden + nj_hidden
@@ -176,9 +176,9 @@ class CrossAttention(nn.Module):
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.kv_proj = nn.Linear(embed_dim, embed_dim * 2, bias=bias)
         self.cpb_mlp = nn.Sequential(
-            nn.Linear(embed_dim, cpb_hidden_dim, bias=bias),
+            nn.Linear(2, cpb_hidden_dim, bias=bias),
             nn.ReLU(),
-            nn.Linear(cpb_hidden_dim, embed_dim, bias=bias),
+            nn.Linear(cpb_hidden_dim, num_heads, bias=bias),
         )
 
         self.attn_dropout = nn.Dropout(attn_dropout)
@@ -208,9 +208,8 @@ class CrossAttention(nn.Module):
         attn_logits = attn_logits * self.norm_factor
 
         # Compute relative continuous position bias
-        relative_distances = relative_distances.view(B, Q * K, 2)
         cpb = self.cpb_mlp(relative_distances)
-        cpb = cpb.view(B, Q, K, self.num_heads).permute(0, 3, 1, 2)  # (B, H, Q, K)
+        cpb = cpb.permute(0, 3, 1, 2)  # (B, H, Q, K)
 
         attn_logits = attn_logits + cpb
         attn_scores = torch.softmax(attn_logits, dim=-1)

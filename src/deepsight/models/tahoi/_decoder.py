@@ -569,9 +569,9 @@ class CrossAttention(nn.Module):
         self.kv_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
         self.cpb_mlp = nn.Sequential(
-            nn.Linear(embed_dim, cpb_hidden_dim, bias=False),
+            nn.Linear(2, cpb_hidden_dim, bias=False),
             nn.ReLU(),
-            nn.Linear(cpb_hidden_dim, embed_dim, bias=False),
+            nn.Linear(cpb_hidden_dim, num_heads, bias=False),
         )
 
         self.attn_dropout = nn.Dropout(attn_dropout)

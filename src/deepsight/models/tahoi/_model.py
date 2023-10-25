@@ -27,7 +27,7 @@ from ._encoder import ViTEncoder
 from ._structures import LayerOutput, Output
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Config:
     """The configuration of the TAHOI model."""
 

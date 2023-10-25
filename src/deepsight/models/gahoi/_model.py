@@ -26,7 +26,7 @@ from ._encoder import ViTEncoder
 from ._structures import Output
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Config:
     """Configuration for the GAHOI model."""
 
@@ -139,15 +139,15 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         predictions = []
         node_offset = 0
 
-        interactions = output.interactions.split_with_sizes(output.num_edges)
+        interactions = output.interactions.split_with_sizes(output.num_edges, dim=1)
         interaction_logits = F.sigmoid(output.interaction_logits)
         interaction_labels = interaction_logits.split_with_sizes(output.num_edges)
 
         for idx, num_nodes in enumerate(output.num_nodes):
-            interactions[idx] = interactions[idx] - node_offset
+            predictions.append(
+                Predictions(interactions[idx] - node_offset, interaction_labels[idx])
+            )
             node_offset += num_nodes
-
-            predictions.append(Predictions(interactions[idx], interaction_labels[idx]))
 
         return Batch(predictions)
 
@@ -186,6 +186,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
             indices=edges,
             values=torch.ones(edges.shape[1], device=node_features.device),
             size=(node_features.shape[0], node_features.shape[0]),
+            is_coalesced=True,
         )
         edge_features = self._get_edge_features(edges, sample.entities)  # (E, D)
 

@@ -42,14 +42,14 @@ class ViTEncoder(nn.Module):
 
         self.transform = T.Compose(
             [
-                T.Resize(size=image_size),
+                T.Resize(size=image_size, antialias=True),
                 T.ToDtype(torch.float, scale=True),
                 T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
 
         self.vit: VisionTransformer = timm.create_model(
-            name, pretrained=True, image_size=image_size
+            name, pretrained=True, img_size=image_size
         )
 
         if self.vit.embed_dim != out_channels:

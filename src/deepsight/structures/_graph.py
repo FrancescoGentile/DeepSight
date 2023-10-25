@@ -54,7 +54,7 @@ class Graph(Moveable):
 
         if num_nodes is None:
             num_nodes = (node_features.shape[0],)
-            num_edges = (adjacency_matrix.shape[1],)
+            num_edges = (adjacency_matrix.indices().shape[1],)
         else:
             num_nodes = tuple(num_nodes)
             num_edges = tuple(num_edges)  # type: ignore
@@ -101,20 +101,23 @@ class Graph(Moveable):
         else:
             edge_features = None
 
+        adj_matrices = [graph.adjacency_matrix().coalesce() for graph in graphs]
+
         indices = []
         node_offset = 0
-        for graph, n_nodes in zip(graphs, num_nodes, strict=True):
+        for adj_matrix, n_nodes in zip(adj_matrices, num_nodes, strict=True):
             if node_offset > 0:
-                indices.append(graph.adjacency_matrix().indices() + node_offset)
+                indices.append(adj_matrix.indices() + node_offset)
             else:
-                indices.append(graph.adjacency_matrix().indices())
+                indices.append(adj_matrix.indices())
             node_offset += n_nodes
 
         total_num_nodes = sum(num_nodes)
         adj = torch.sparse_coo_tensor(
-            indices=torch.cat(indices),
-            values=torch.cat([graph.adjacency_matrix().values() for graph in graphs]),
+            indices=torch.cat(indices, dim=1),
+            values=torch.cat([adj_matrix.values() for adj_matrix in adj_matrices]),
             size=(total_num_nodes, total_num_nodes),
+            is_coalesced=True,
         )
 
         return cls(
@@ -230,7 +233,7 @@ class Graph(Moveable):
                 raise NotImplementedError
             case BatchMode.SEQUENCE:
                 values = self._adj.values().split_with_sizes(self._num_edges)
-                indices = self._adj.indices().split_with_sizes(self._num_edges)
+                indices = self._adj.indices().split_with_sizes(self._num_edges, dim=1)
                 node_offset = 0
                 for idx, n_nodes in enumerate(self._num_nodes):
                     if node_offset > 0:
@@ -545,7 +548,7 @@ def _check_graphs(graphs: list[Graph]) -> None:
         raise ValueError("All graphs must be on the same device.")
 
     if any(
-        graphs[0].edge_features() is not None != graph.edge_features() is not None
+        (graphs[0].edge_features() is not None) != (graph.edge_features() is not None)
         for graph in graphs
     ):
         raise ValueError("Cannot batch graphs some of which have edges and some not.")

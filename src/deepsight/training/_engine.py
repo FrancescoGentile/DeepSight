@@ -34,7 +34,7 @@ A = TypeVar("A", bound=Moveable)
 P = TypeVar("P", bound=Moveable)
 
 
-class Engine(Generic[S, O, A, P], Stateful):
+class Engine(Stateful, Generic[S, O, A, P]):
     def __init__(
         self,
         train_dataset: Dataset[S, A, P],
@@ -65,6 +65,7 @@ class Engine(Generic[S, O, A, P], Stateful):
         """Initialize the training engine."""
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.output_dir = Path(output_dir) / now
+        self.output_dir.mkdir(parents=True, exist_ok=False)
         self.logger = _get_logger(self.output_dir / "train.log")
         self.logger.info(f"Output directory: {self.output_dir}.")
 
@@ -307,7 +308,7 @@ class Engine(Generic[S, O, A, P], Stateful):
 
                 metrics = self.evaluator.compute_numeric_metrics()
                 metric_value = metrics[self.metric_to_optimize]
-                if current_optimal_metric > current_optimal_metric:
+                if metric_value > current_optimal_metric:
                     current_optimal_metric = metric_value
                     current_patience = self.patience
                     model_state = self.model.get_state()
@@ -363,13 +364,16 @@ class Engine(Generic[S, O, A, P], Stateful):
                 strict=True,
             )
 
+            last_n_steps_num_samples += len(samples)
+            all_num_samples += len(samples)
+
             for acc_samples, acc_annotations in acc_batches:
                 acc_samples = acc_samples.move(self.device, True)
                 acc_annotations = acc_annotations.move(self.device, True)
 
                 with autocast(self.device.type, self.precision, enabled):
                     outputs = self.model(acc_samples, acc_annotations)
-                    losses = self.criterion.compute(outputs, annotations)
+                    losses = self.criterion.compute(outputs, acc_annotations)
 
                     for loss, value in losses.items():
                         last_n_steps_losses[loss] += value.item() * len(acc_samples)

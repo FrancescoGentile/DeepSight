@@ -70,7 +70,7 @@ def _batch(
         interactions.append(annotation.interactions + node_offset)
         node_offset += n_nodes
 
-    interactions = torch.cat(interactions)
+    interactions = torch.cat(interactions, dim=1)
     interaction_labels = torch.cat([s.interaction_labels for s in annotations])
 
     return interactions, interaction_labels

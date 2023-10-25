@@ -14,7 +14,7 @@ from deepsight.typing import Moveable
 T = TypeVar("T", bound=Moveable)
 
 
-class Batch(Generic[T], Moveable):
+class Batch(Moveable, Generic[T]):
     """A batch of samples."""
 
     # ------------------------------------------------------------------------- #

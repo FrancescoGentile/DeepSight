@@ -56,7 +56,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     def __init__(
         self,
         num_interaction_classes: int,
-        error_strategy: ErrorStrategy = ErrorStrategy.IGNORE,
+        error_strategy: ErrorStrategy = ErrorStrategy.NONE,
         human_class_id: int | None = None,
         allow_human_human: bool | None = None,
     ) -> None:
@@ -210,7 +210,7 @@ def _match_prediction_ground_truth(
     ] = pred.interaction_labels[not_matched_pred]
 
     targets[
-        len(matched_target) + len(matched_pred) :
+        len(matched_target) + len(not_matched_pred) :
     ] = ground_truth.interaction_labels[not_matched_target]
 
     return predictions, targets

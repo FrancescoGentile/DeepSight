@@ -24,6 +24,7 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
         self,
         path: Path | str,
         split: Literal[Split.TRAIN, Split.TEST],
+        max_samples: int | None = None,
     ) -> None:
         """Initializes a new H2O dataset.
 
@@ -40,12 +41,19 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
                     classes.
             split: The split of the dataset to load. At the moment, only the
                 `train` and `test` splits are supported.
+            max_samples: The maximum number of samples to load. If `None`, all
+                samples are loaded. Must be greater than 0.
         """
         super().__init__()
+
+        if max_samples is not None and max_samples <= 0:
+            raise ValueError("max_samples must be greater than 0.")
 
         self._path = Path(path)
         self._split = split
         self._samples = self._get_samples()
+        if max_samples is not None:
+            self._samples = self._samples[:max_samples]
 
         entity_classes = self._get_entity_classes()
         self._entity_class_to_id = {name: i for i, name in enumerate(entity_classes)}
@@ -90,8 +98,9 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
         coords = [e["bbox"] for e in file_sample["entities"]]
         entities = BoundingBoxes(coords, BoundingBoxFormat.XYXY, True, image.size)
 
-        entity_labels = [e["category"] for e in file_sample["entities"]]
-        entity_labels = torch.as_tensor(entity_labels)
+        entity_labels = torch.as_tensor(
+            [self._entity_class_to_id[e["category"]] for e in file_sample["entities"]]
+        )
 
         interaction_to_idx: dict[tuple[int, int], int] = {}
         for action in file_sample["actions"]:
@@ -106,7 +115,12 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
             if interaction not in interaction_to_idx:
                 interaction_to_idx[interaction] = len(interaction_to_idx)
 
-        interactions = torch.as_tensor(list(interaction_to_idx.keys())).transpose_(0, 1)
+        if len(interaction_to_idx) == 0:
+            interactions = torch.empty((2, 0), dtype=torch.long)
+        else:
+            interactions = torch.as_tensor(list(interaction_to_idx.keys()))  # (E, 2)
+            interactions.transpose_(0, 1)  # (2, E)
+
         interaction_labels = torch.zeros(
             (len(interaction_to_idx), self.num_interaction_classes),
             dtype=torch.float,
