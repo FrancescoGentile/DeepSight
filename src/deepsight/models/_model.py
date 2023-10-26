@@ -34,12 +34,10 @@ class DeepSightModel(nn.Module, Moveable, Stateful, Generic[S, O, A, P], abc.ABC
     # ----------------------------------------------------------------------- #
 
     @abc.abstractmethod
-    def forward(self, samples: Batch[S], annotations: Batch[A] | None) -> O:
-        ...
+    def forward(self, samples: Batch[S], annotations: Batch[A] | None) -> O: ...
 
     @abc.abstractmethod
-    def postprocess(self, output: O) -> Batch[P]:
-        ...
+    def postprocess(self, output: O) -> Batch[P]: ...
 
     def move(self, device: torch.device, non_blocking: bool = False) -> Self:
         return self.to(device, non_blocking=non_blocking)

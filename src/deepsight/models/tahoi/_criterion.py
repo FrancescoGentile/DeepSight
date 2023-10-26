@@ -67,18 +67,12 @@ class Criterion(_Criterion[Output, Annotations]):
         losses = []
         for layer in self.layers:
             losses.extend(
-                [
-                    f"focal_loss_{layer}",
-                    f"bce_loss_{layer}",
-                    f"hc_loss_{layer}",
-                ]
+                [f"focal_loss_{layer}", f"bce_loss_{layer}", f"hc_loss_{layer}"]
             )
         return losses
 
     def compute(
-        self,
-        output: Output,
-        annotations: Batch[Annotations],
+        self, output: Output, annotations: Batch[Annotations]
     ) -> dict[str, Tensor]:
         losses = {}
         gt_num_edges = [ann.interactions.shape[1] for ann in annotations]
@@ -276,7 +270,7 @@ class Criterion(_Criterion[Output, Annotations]):
 
 
 def _batch(
-    annotations: Batch[Annotations],
+    annotations: Batch[Annotations]
 ) -> tuple[
     Annotated[Tensor, "N H", int, torch.sparse_coo],
     Annotated[Tensor, "H C", float],
@@ -286,9 +280,7 @@ def _batch(
     total_edges = sum(ann.interactions.shape[1] for ann in annotations)
 
     bm = torch.zeros(
-        (total_nodes, total_edges),
-        dtype=torch.bool,
-        device=annotations.device,
+        (total_nodes, total_edges), dtype=torch.bool, device=annotations.device
     )
 
     node_offset = 0

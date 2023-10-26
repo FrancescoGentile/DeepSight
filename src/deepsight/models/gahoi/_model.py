@@ -60,12 +60,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
 
         # Parameters
         self.encoder = ViTEncoder(config.encoder, config.image_size, config.node_dim)
-        self.roi_align = RoIAlign(
-            output_size=1,
-            spatial_scale=1.0,
-            sampling_ratio=-1,
-            aligned=True,
-        )
+        self.roi_align = RoIAlign(1, 1.0, -1, True)
         self.edge_proj = nn.Linear(36, config.edge_dim)
         self.decoder = Decoder(
             node_dim=config.node_dim,
@@ -92,35 +87,40 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # ----------------------------------------------------------------------- #
 
     def forward(
-        self,
-        samples: Batch[Sample],
-        annotations: Batch[Annotations] | None,
+        self, samples: Batch[Sample], annotations: Batch[Annotations] | None
     ) -> Output:
+        # Encoder
         images = self.encoder((sample.image for sample in samples))
         H, W = images.shape[-2:]  # noqa
-        boxes = [
-            sample.entities.resize((H, W)).denormalize().to_xyxy() for sample in samples
-        ]
+        boxes = [s.entities.resize((H, W)).denormalize().to_xyxy() for s in samples]
 
         coords = [box.coordinates for box in boxes]
         node_features = self.roi_align(images, coords)
         node_features = node_features.flatten(1)  # (N, C)
         node_features = node_features.split_with_sizes([len(box) for box in boxes])
 
-        graphs = [
-            self._create_interaction_graph(sample, features)
-            for sample, features in zip(samples, node_features, strict=True)
-        ]
+        # Decoder
+        boxes = BatchedBoundingBoxes.batch(boxes)
+        graphs = Graph.batch(
+            (
+                self._create_interaction_graph(sample, features)
+                for sample, features in zip(samples, node_features, strict=True)
+            )
+        )
+        edge_features = self.edge_proj(graphs.edge_features())
+        graphs = graphs.replace(edge_features=edge_features)
+        graphs = self.decoder(graphs, boxes, images)
 
-        graphs = Graph.batch(graphs)
-        batched_boxes = BatchedBoundingBoxes.batch(boxes)
-
-        graphs = self.decoder(graphs, batched_boxes, images)
-
+        # Classifier
         edge_features = graphs.edge_features()
         assert edge_features is not None
 
         edge_indices = graphs.adjacency_matrix().indices()
+        # keep only the edges where the first node is a human
+        entity_labels = torch.cat([sample.entity_labels for sample in samples])
+        keep = entity_labels[edge_indices[0]] == self.human_class_id
+        edge_indices = edge_indices[:, keep]
+
         first_node = edge_features[edge_indices[0]]
         second_node = edge_features[edge_indices[1]]
         interaction_features = torch.cat(
@@ -128,10 +128,14 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         )
         interaction_logits = self.classifier(interaction_features)
 
+        # since we removed some edges, we need to update the number of edges
+        keep = keep.split_with_sizes(list(graphs.num_edges(BatchMode.SEQUENCE)))
+        num_edges = [int(torch.sum(k).item()) for k in keep]
+
         return Output(
             num_nodes=list(graphs.num_nodes(BatchMode.SEQUENCE)),
-            num_edges=list(graphs.num_edges(BatchMode.SEQUENCE)),
-            interactions=graphs.adjacency_matrix().indices(),
+            num_edges=num_edges,
+            interactions=edge_indices,
             interaction_logits=interaction_logits,
         )
 
@@ -159,13 +163,11 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # ----------------------------------------------------------------------- #
 
     def _create_interaction_graph(
-        self,
-        sample: Sample,
-        node_features: Annotated[Tensor, "N D", float],
+        self, sample: Sample, node_features: Annotated[Tensor, "N D", float]
     ) -> Graph:
         human_labels = sample.entity_labels == self.human_class_id
         human_indices = torch.nonzero(human_labels, as_tuple=True)[0]
-        object_indices = torch.nonzero(~human_labels, as_tuple=True)[0]
+        object_indices = torch.nonzero(human_labels.logical_not_(), as_tuple=True)[0]
 
         human_object_edges = torch.cartesian_prod(human_indices, object_indices)
         object_human_edges = human_object_edges.flip(1)
@@ -175,9 +177,8 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         if self.allow_human_human:
             human_human_edges = torch.cartesian_prod(human_indices, human_indices)
             # remove self-loops
-            human_human_edges = human_human_edges[
-                human_human_edges[:, 0] != human_human_edges[:, 1]
-            ]
+            keep = human_human_edges[:, 0] != human_human_edges[:, 1]
+            human_human_edges = human_human_edges[keep]
 
             edges.append(human_human_edges)
 
@@ -193,9 +194,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         return Graph(adj_matrix, node_features, edge_features)
 
     def _get_edge_features(
-        self,
-        edges: Annotated[Tensor, "2 E", int],
-        boxes: BoundingBoxes,
+        self, edges: Annotated[Tensor, "2 E", int], boxes: BoundingBoxes
     ) -> Annotated[Tensor, "E D", float]:
         edge_features = []
 
@@ -212,9 +211,9 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         area2 = boxes2.area()
         edge_features.append(area1)
         edge_features.append(area2)
+        edge_features.append(area1 / area2)
 
         edge_features.append(boxes1.iou(boxes2))
-        edge_features.append(area1 / area2)
 
         dx = boxes1.coordinates[:, 0] - boxes2.coordinates[:, 0]
         dx = dx / boxes1.coordinates[:, 2]
@@ -230,4 +229,4 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
             [edge_features, torch.log(edge_features + eps)], dim=1
         )
 
-        return self.edge_proj(edge_features)
+        return edge_features

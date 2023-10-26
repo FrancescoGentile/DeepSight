@@ -28,9 +28,15 @@ class BatchedSequences:
         data: Annotated[Tensor, "B L D", Number],
         sequence_lengths: tuple[int, ...] | None = None,
         mask: Annotated[Tensor, "B L", bool] | None = None,
-        check: bool = True,
+        *,
+        check_validity: bool = True,
     ) -> None:
         """Initialize the batched sequences.
+
+        !!! note
+
+            If neither `sequence_lengths` nor `mask` is provided, it is assumed that
+            the sequences are not padded (i.e., all sequences have the same length).
 
         Args:
             data: The tensor containing the batched sequences.
@@ -38,10 +44,9 @@ class BatchedSequences:
             mask: The mask indicating which elements are padded and which not.
                 The mask is `True` for padded elements and `False` for valid elements.
                 If not provided, the mask is computed from the sequence lengths.
-            check: Whether to check the validity of the inputs.
+            check_validity: Whether to check the validity of the inputs.
 
         Raises:
-            ValueError: If neither `sequence_lengths` nor `mask` are provided.
             ValueError: If `sequence_lengths` and `mask` are both provided and are
                 incompatible.
             ValueError: If the `data` and `mask` (thus `sequence_lengths`) are
@@ -49,7 +54,9 @@ class BatchedSequences:
         """
         match sequence_lengths, mask:
             case None, None:
-                raise ValueError("Either sequence_lengths or mask must be provided.")
+                sequence_lengths = (data.shape[1],) * data.shape[0]
+                mask = torch.zeros(data.shape[:2], dtype=torch.bool, device=data.device)
+                check_validity = False
             case None, _:
                 sequence_lengths = _compute_lengths_from_mask(mask)  # type: ignore
             case _, None:
@@ -57,14 +64,14 @@ class BatchedSequences:
                     sequence_lengths, data.shape[1], data.device
                 )
             case _, _:
-                if check:
+                if check_validity:
                     mask_lengths = _compute_lengths_from_mask(mask)
                     if mask_lengths != sequence_lengths:
                         raise ValueError(
                             "The sequence_lengths and mask are incompatible."
                         )
 
-        if check:
+        if check_validity:
             if mask.device != data.device:  # type: ignore
                 raise ValueError("The data and mask must be on the same device.")
             if mask.dtype != torch.bool:  # type: ignore
@@ -106,7 +113,7 @@ class BatchedSequences:
         for i, sequence in enumerate(sequences):
             data[i, : sequence.shape[0]].copy_(sequence)
 
-        return cls(data, sequence_lengths=sequence_lengths, check=False)
+        return cls(data, sequence_lengths=sequence_lengths, check_validity=False)
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -168,7 +175,7 @@ class BatchedSequences:
             self._data.to(device, non_blocking=non_blocking),
             self._sequence_lengths,
             mask=self._mask.to(device, non_blocking=non_blocking),
-            check=False,
+            check_validity=False,
         )
 
     def replace(self, data: Annotated[Tensor, "B L D", Number]) -> Self:
@@ -184,7 +191,7 @@ class BatchedSequences:
             data,
             sequence_lengths=self._sequence_lengths,
             mask=self._mask,
-            check=False,
+            check_validity=False,
         )
 
     # ----------------------------------------------------------------------- #
@@ -237,9 +244,7 @@ def _compute_lengths_from_mask(mask: Annotated[Tensor, "B L", bool]) -> tuple[in
 
 
 def _compute_mask_from_lengths(
-    sequence_lengths: tuple[int, ...],
-    max_length: int,
-    device: torch.device,
+    sequence_lengths: tuple[int, ...], max_length: int, device: torch.device
 ) -> Annotated[Tensor, "B L", bool]:
     """Compute the mask from the sequence lengths.
 

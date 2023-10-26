@@ -25,8 +25,7 @@ build-backend = "pdm.backend"
 
 [tool.pdm.dev-dependencies]
 lint = [
-    "black>=23.9.1",
-    "ruff>=0.0.292",
+    "ruff>=0.1.1",
     "pyright>=1.1.330.post0",
 ]
 docs = [
@@ -34,10 +33,6 @@ docs = [
     "mkdocstrings[python]>=0.23.0",
     "mkdocs-material>=9.4.4",
 ]
-
-[tool.black]
-target-version = ["py310", "py311"]
-line-length = 88
 
 [tool.ruff]
 line-length = 88
@@ -52,3 +47,6 @@ convention = "google"
 
 [tool.ruff.mccabe]
 max-complexity = 10
+
+[tool.ruff.format]
+preview = true

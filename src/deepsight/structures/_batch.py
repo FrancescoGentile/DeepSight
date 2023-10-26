@@ -69,10 +69,7 @@ class Batch(Moveable, Generic[T]):
         )
 
     def split(
-        self,
-        *,
-        num_splits: int | None = None,
-        split_size: int | None = None,
+        self, *, num_splits: int | None = None, split_size: int | None = None
     ) -> Iterable[Self]:
         """Split this batch into smaller batches.
 
@@ -125,12 +122,10 @@ class Batch(Moveable, Generic[T]):
         return len(self._samples)
 
     @typing.overload
-    def __getitem__(self, index: int) -> T:
-        ...
+    def __getitem__(self, index: int) -> T: ...
 
     @typing.overload
-    def __getitem__(self, index: slice) -> Self:
-        ...
+    def __getitem__(self, index: slice) -> Self: ...
 
     def __getitem__(self, index: int | slice) -> T | Self:
         """Return the sample at the given index or a new batch of samples.

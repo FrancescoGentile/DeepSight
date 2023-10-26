@@ -20,8 +20,7 @@ def coalesce(
     reduce: ReduceOp | str = ReduceOp.SUM,
     is_sorted: bool = False,
     sort_by_row: bool = True,
-) -> tuple[Annotated[Tensor, "2 N", int], Annotated[Tensor, "N *", Number]]:
-    ...
+) -> tuple[Annotated[Tensor, "2 N", int], Annotated[Tensor, "N *", Number]]: ...
 
 
 @overload
@@ -32,8 +31,7 @@ def coalesce(
     reduce: ReduceOp | str = ReduceOp.SUM,
     is_sorted: bool = False,
     sort_by_row: bool = True,
-) -> tuple[Annotated[Tensor, "2 N", int], None]:
-    ...
+) -> tuple[Annotated[Tensor, "2 N", int], None]: ...
 
 
 def coalesce(

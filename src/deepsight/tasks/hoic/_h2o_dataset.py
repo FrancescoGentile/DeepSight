@@ -122,8 +122,7 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
             interactions.transpose_(0, 1)  # (2, E)
 
         interaction_labels = torch.zeros(
-            (len(interaction_to_idx), self.num_interaction_classes),
-            dtype=torch.float,
+            (len(interaction_to_idx), self.num_interaction_classes), dtype=torch.float
         )
 
         for action in file_sample["actions"]:

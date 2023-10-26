@@ -62,11 +62,7 @@ class Graph(Moveable):
         adjacency_matrix = adjacency_matrix.to_sparse_coo()
 
         _check_tensors(
-            adjacency_matrix,
-            node_features,
-            edge_features,
-            num_nodes,
-            num_edges,
+            adjacency_matrix, node_features, edge_features, num_nodes, num_edges
         )
 
         self._adj = adjacency_matrix
@@ -143,14 +139,12 @@ class Graph(Moveable):
     @overload
     def num_nodes(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> int:
-        ...
+    ) -> int: ...
 
     @overload
     def num_nodes(
         self, batch_mode: Literal[BatchMode.STACK, BatchMode.SEQUENCE]
-    ) -> Iterable[int]:
-        ...
+    ) -> Iterable[int]: ...
 
     def num_nodes(
         self, batch_mode: BatchMode = BatchMode.CONCAT
@@ -173,14 +167,12 @@ class Graph(Moveable):
     @overload
     def num_edges(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> int:
-        ...
+    ) -> int: ...
 
     @overload
     def num_edges(
         self, batch_mode: Literal[BatchMode.STACK, BatchMode.SEQUENCE]
-    ) -> Iterable[int]:
-        ...
+    ) -> Iterable[int]: ...
 
     def num_edges(
         self, batch_mode: BatchMode = BatchMode.CONCAT
@@ -203,20 +195,17 @@ class Graph(Moveable):
     @overload
     def adjacency_matrix(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
-        ...
+    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]: ...
 
     @overload
     def adjacency_matrix(
         self, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N N", Number, torch.sparse_coo]:
-        ...
+    ) -> Annotated[Tensor, "B N N", Number, torch.sparse_coo]: ...
 
     @overload
     def adjacency_matrix(
         self, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N N", Number, torch.sparse_coo]]:
-        ...
+    ) -> Iterable[Annotated[Tensor, "N N", Number, torch.sparse_coo]]: ...
 
     def adjacency_matrix(
         self, batch_mode: BatchMode = BatchMode.CONCAT
@@ -252,20 +241,17 @@ class Graph(Moveable):
     @overload
     def node_features(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N D", Number]:
-        ...
+    ) -> Annotated[Tensor, "N D", Number]: ...
 
     @overload
     def node_features(
         self, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N D", Number]:
-        ...
+    ) -> Annotated[Tensor, "B N D", Number]: ...
 
     @overload
     def node_features(
         self, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N D", Number]]:
-        ...
+    ) -> Iterable[Annotated[Tensor, "N D", Number]]: ...
 
     def node_features(
         self, batch_mode: BatchMode = BatchMode.CONCAT
@@ -287,20 +273,17 @@ class Graph(Moveable):
     @overload
     def edge_features(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "E C", Number] | None:
-        ...
+    ) -> Annotated[Tensor, "E C", Number] | None: ...
 
     @overload
     def edge_features(
         self, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B E C", Number] | None:
-        ...
+    ) -> Annotated[Tensor, "B E C", Number] | None: ...
 
     @overload
     def edge_features(
         self, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "E C", Number]] | None:
-        ...
+    ) -> Iterable[Annotated[Tensor, "E C", Number]] | None: ...
 
     def edge_features(
         self, batch_mode: BatchMode = BatchMode.CONCAT

@@ -18,8 +18,7 @@ def add_remaining_self_loops(
     values: Annotated[Tensor, "N *", Number],
     size: int | tuple[int, int] | None = None,
     fill_value: Number | Tensor | ReduceOp | str = 1.0,  # type: ignore
-) -> tuple[Annotated[Tensor, "2 N", int], Annotated[Tensor, "N *", Number]]:
-    ...
+) -> tuple[Annotated[Tensor, "2 N", int], Annotated[Tensor, "N *", Number]]: ...
 
 
 @overload
@@ -28,8 +27,7 @@ def add_remaining_self_loops(
     values: None = None,
     size: int | tuple[int, int] | None = None,
     fill_value: None = None,
-) -> tuple[Annotated[Tensor, "2 N", int], None]:
-    ...
+) -> tuple[Annotated[Tensor, "2 N", int], None]: ...
 
 
 def add_remaining_self_loops(
@@ -94,11 +92,7 @@ def add_remaining_self_loops(
                 )
         else:
             loop_values = scatter(
-                values,
-                indices[1],
-                dim=0,
-                dim_output_size=num_nodes,
-                reduce=fill_value,
+                values, indices[1], dim=0, dim_output_size=num_nodes, reduce=fill_value
             )
 
         not_mask = ~mask

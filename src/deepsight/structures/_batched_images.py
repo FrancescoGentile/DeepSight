@@ -30,9 +30,16 @@ class BatchedImages:
         data: Annotated[Tensor, "B C H W", Number],
         image_sizes: tuple[tuple[int, int], ...] | None = None,
         mask: Annotated[Tensor, "B H W", bool] | None = None,
-        check: bool = True,
+        *,
+        check_validity: bool = True,
     ) -> None:
         """Initialize the batched images.
+
+        !!! note
+
+            If neither `image_sizes` nor `mask` are provided, it is assumed
+            that the images are not padded (i.e., the images in the batch
+            have the same height and width).
 
         Args:
             data: The tensor containing the batched images.
@@ -42,33 +49,35 @@ class BatchedImages:
                 not. The mask is `True` for padded pixels and `False` for
                 valid pixels. If not provided, the mask is computed from
                 the image sizes.
-            check: Whether to check the validity of the inputs.
+            check_validity: Whether to check the validity of the inputs.
 
         Raises:
             ValueError: raised under the following conditions:
-                - If neither `image_sizes` nor `mask` are provided.
                 - If `image_sizes` and `mask` are provided and are incompatible.
                 - If the `data` and `mask` (thus `image_sizes`) are incompatible.
         """
         match image_sizes, mask:
             case None, None:
-                raise ValueError("Either image_sizes or mask must be provided.")
+                image_sizes = tuple((data.shape[2], data.shape[3]) for _ in data)
+                mask = torch.zeros(
+                    (len(data), data.shape[2], data.shape[3]),
+                    dtype=torch.bool,
+                    device=data.device,
+                )
+                check_validity = False
             case None, _:
                 image_sizes = _compute_sizes_from_mask(mask)  # type: ignore
             case _, None:
                 mask = _compute_mask_from_sizes(
-                    image_sizes,
-                    data.shape[2],
-                    data.shape[3],
-                    data.device,
+                    image_sizes, data.shape[2], data.shape[3], data.device
                 )
             case _, _:
-                if check:
+                if check_validity:
                     mask_image_sizes = _compute_sizes_from_mask(mask)
                     if image_sizes != mask_image_sizes:
                         raise ValueError("The image_sizes and mask are incompatible.")
 
-        if check:
+        if check_validity:
             if mask.device != data.device:  # type: ignore
                 raise ValueError("The data and mask must be on the same device.")
             if mask.dtype != torch.bool:  # type: ignore
@@ -175,10 +184,7 @@ class BatchedImages:
         _check_data_mask(data, self._mask)
 
         return self.__class__(
-            data,
-            image_sizes=self._image_sizes,
-            mask=self._mask,
-            check=False,
+            data, image_sizes=self._image_sizes, mask=self._mask, check_validity=False
         )
 
     def to_sequences(self) -> BatchedSequences:
@@ -187,14 +193,14 @@ class BatchedImages:
         mask = self._mask.flatten(1)
         sizes = tuple(s[0] * s[1] for s in self._image_sizes)
 
-        return BatchedSequences(data, sizes, mask, check=False)
+        return BatchedSequences(data, sizes, mask, check_validity=False)
 
     def to_device(self, device: torch.device, non_blocking: bool = False) -> Self:
         return self.__class__(
             self._data.to(device, non_blocking=non_blocking),
             image_sizes=self._image_sizes,
             mask=self._mask.to(device, non_blocking=non_blocking),
-            check=False,
+            check_validity=False,
         )
 
     # ----------------------------------------------------------------------- #
@@ -234,7 +240,7 @@ class BatchedImages:
 
 
 def _compute_sizes_from_mask(
-    mask: Annotated[Tensor, "B H W", bool],
+    mask: Annotated[Tensor, "B H W", bool]
 ) -> tuple[tuple[int, int], ...]:
     """Get the sizes of the images from the mask.
 
@@ -275,9 +281,7 @@ def _compute_mask_from_sizes(
         The mask is `True` for padded pixels and `False` for valid pixels.
     """
     mask = torch.ones(
-        (len(sizes), max_height, max_width),
-        dtype=torch.bool,
-        device=device,
+        (len(sizes), max_height, max_width), dtype=torch.bool, device=device
     )
 
     for i, size in enumerate(sizes):

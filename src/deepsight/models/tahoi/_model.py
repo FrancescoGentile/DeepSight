@@ -88,9 +88,7 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # ----------------------------------------------------------------------- #
 
     def forward(
-        self,
-        samples: Batch[Sample],
-        annotations: Batch[Annotations] | None,
+        self, samples: Batch[Sample], annotations: Batch[Annotations] | None
     ) -> Output:
         images = self.encoder((sample.image for sample in samples))
         H, W = images.shape[-2:]  # noqa
@@ -153,8 +151,7 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
 
         return output
 
-    def postprocess(self, output: Output) -> Batch[Predictions]:
-        ...
+    def postprocess(self, output: Output) -> Batch[Predictions]: ...
 
     def get_config(self) -> JSONPrimitive:
         return self._config.__dict__.copy()
@@ -164,9 +161,7 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # ----------------------------------------------------------------------- #
 
     def _create_interaction_graph(
-        self,
-        sample: Sample,
-        node_features: Annotated[Tensor, "N D", float],
+        self, sample: Sample, node_features: Annotated[Tensor, "N D", float]
     ) -> CombinatorialComplex:
         human_indices = sample.entity_labels == self.human_class_id
         human_indices = torch.nonzero(human_indices, as_tuple=True)[0]
@@ -180,8 +175,8 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         edges = edges.transpose(0, 1)  # (2, E)
 
         # remove self-loops
-        mask = edges[0] != edges[1]
-        edges = edges[:, mask]
+        keep = edges[0] != edges[1]
+        edges = edges[:, keep]
 
         edge_features = self._get_edge_features(edges, sample.entities)
 
@@ -198,9 +193,7 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         return CombinatorialComplex([node_features, edge_features], [boundary_matrix])
 
     def _get_edge_features(
-        self,
-        edges: Annotated[Tensor, "2 E", int],
-        boxes: BoundingBoxes,
+        self, edges: Annotated[Tensor, "2 E", int], boxes: BoundingBoxes
     ) -> Annotated[Tensor, "E 36", float]:
         edge_features = []
 

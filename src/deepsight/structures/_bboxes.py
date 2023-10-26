@@ -294,25 +294,69 @@ class BoundingBoxes(Moveable):
         """
         match self.format:
             case BoundingBoxFormat.XYXY:
-                w = self.coordinates[..., 2] - self.coordinates[..., 0]
-                h = self.coordinates[..., 3] - self.coordinates[..., 1]
-                return w * h
+                wh = self.coordinates[..., 2:] - self.coordinates[..., :2]
+                area = wh[..., 0] * wh[..., 1]
             case BoundingBoxFormat.XYWH:
-                return self.coordinates[..., 2] * self.coordinates[..., 3]
+                area = self.coordinates[..., 2] * self.coordinates[..., 3]
             case BoundingBoxFormat.CXCYWH:
-                return self.coordinates[..., 2] * self.coordinates[..., 3]
+                area = self.coordinates[..., 2] * self.coordinates[..., 3]
+
+        return area
 
     def aspect_ratio(self) -> Annotated[Tensor, "N", float]:
-        """Compute the aspect ratio of the bounding boxes."""
+        """Compute the aspect ratio of the bounding boxes.
+
+        The aspect ratio is computed as the width divided by the height.
+
+        !!! note
+
+            To avoid division by zero, a small epsilon is added to the height
+            before computing the aspect ratio.
+        """
         match self.format:
             case BoundingBoxFormat.XYXY:
-                w = self.coordinates[..., 2] - self.coordinates[..., 0]
-                h = self.coordinates[..., 3] - self.coordinates[..., 1]
-                return w / h
+                wh = self.coordinates[..., 2:] - self.coordinates[..., :2]
+                w, h = wh[..., 0], wh[..., 1]
             case BoundingBoxFormat.XYWH:
-                return self.coordinates[..., 2] / self.coordinates[..., 3]
+                w, h = self.coordinates[..., 2], self.coordinates[..., 3]
             case BoundingBoxFormat.CXCYWH:
-                return self.coordinates[..., 2] / self.coordinates[..., 3]
+                w, h = self.coordinates[..., 2], self.coordinates[..., 3]
+
+        eps = torch.finfo(w.dtype).eps
+        return w / (h + eps)
+
+    def union(self, other: Self) -> Self:
+        """Compute the union of the bounding boxes."""
+        boxes1 = self.to_xyxy()
+        boxes2 = other.convert_like(boxes1)
+        boxes1._check_compatibility(boxes2)
+
+        x1y1 = torch.min(boxes1.coordinates[..., :2], boxes2.coordinates[..., :2])
+        x2y2 = torch.max(boxes1.coordinates[..., 2:], boxes2.coordinates[..., 2:])
+
+        return self.__class__(
+            torch.cat([x1y1, x2y2], dim=-1),
+            BoundingBoxFormat.XYXY,
+            boxes1.normalized,
+            boxes1.image_size,
+        )
+
+    def intersection(self, other: Self) -> Self:
+        """Compute the intersection of the bounding boxes."""
+        boxes1 = self.to_xyxy()
+        boxes2 = other.convert_like(boxes1)
+        boxes1._check_compatibility(boxes2)
+
+        x1y1 = torch.max(boxes1.coordinates[..., :2], boxes2.coordinates[..., :2])
+        x2y2 = torch.min(boxes1.coordinates[..., 2:], boxes2.coordinates[..., 2:])
+        wh = torch.clamp(x2y2 - x1y1, min=0)
+
+        return self.__class__(
+            torch.cat([x1y1, wh], dim=-1),
+            BoundingBoxFormat.XYWH,
+            boxes1.normalized,
+            boxes1.image_size,
+        )
 
     def union_area(self, other: Self) -> Annotated[Tensor, "N", float]:
         """Compute the union area of the bounding boxes.
@@ -323,13 +367,6 @@ class BoundingBoxes(Moveable):
             The union area is the sum of the areas of the bounding boxes minus
             the intersection area. To compute the area of the union of the
             bounding boxes, use `self.union(other).area()` instead.
-
-        !!! note
-
-            Differently from `union` and `intersection` that internally convert
-            the bounding boxes to the same format and normalization, this method
-            requires that the bounding boxes have the same normalization to
-            determine whether the union area is normalized or not.
 
         Args:
             other: The other bounding box object.
@@ -354,12 +391,14 @@ class BoundingBoxes(Moveable):
 
         This is equivalent to `self.intersection(other).area()`.
 
-        !!! note
+        Args:
+            other: The other bounding box object.
 
-            Differently from `union` and `intersection` that internally convert
-            the bounding boxes to the same format and normalization, this method
-            requires that the bounding boxes have the same normalization to
-            determine whether the intersection area is normalized or not.
+        Returns:
+            The intersection area of the bounding boxes.
+
+        Raises:
+            ValueError: If the bounding boxes do not have the same normalization.
         """
         if self.normalized != other.normalized:
             raise ValueError("The bounding boxes must have the same normalization.")
@@ -367,13 +406,7 @@ class BoundingBoxes(Moveable):
         return self.intersection(other).area()
 
     def iou(self, other: Self) -> Annotated[Tensor, "N", float]:
-        """Compute the intersection over union (IoU) of the bounding boxes.
-
-        !!! note
-
-            This method internally converts the bounding boxes to the same
-            normalization since the IoU is not affected by the normalization.
-        """
+        """Compute the intersection over union (IoU) of the bounding boxes."""
         boxes1 = self.normalize()
         boxes2 = other.normalize()
 
@@ -382,53 +415,6 @@ class BoundingBoxes(Moveable):
 
         eps = torch.finfo(intersection_area.dtype).eps
         return intersection_area / (union_area + eps)
-
-    def union(self, other: Self) -> Self:
-        """Compute the union of the bounding boxes."""
-        boxes1 = self.to_xyxy()
-        boxes2 = other.to_xyxy()
-        if boxes1.normalized != boxes2.normalized:
-            normalized = True
-            boxes1 = boxes1.normalize()
-            boxes2 = boxes2.normalize()
-        else:
-            normalized = boxes1.normalized
-
-        _check_boxes(boxes1, boxes2)
-
-        x1y1 = torch.min(boxes1.coordinates[..., :2], boxes2.coordinates[..., :2])
-        x2y2 = torch.max(boxes1.coordinates[..., 2:], boxes2.coordinates[..., 2:])
-
-        return self.__class__(
-            torch.cat([x1y1, x2y2], dim=-1),
-            BoundingBoxFormat.XYXY,
-            normalized,
-            boxes1.image_size,
-        )
-
-    def intersection(self, other: Self) -> Self:
-        """Compute the intersection of the bounding boxes."""
-        boxes1 = self.to_xyxy()
-        boxes2 = other.to_xyxy()
-        if boxes1.normalized != boxes2.normalized:
-            normalized = True
-            boxes1 = boxes1.normalize()
-            boxes2 = boxes2.normalize()
-        else:
-            normalized = boxes1.normalized
-
-        _check_boxes(boxes1, boxes2)
-
-        x1y1 = torch.max(boxes1.coordinates[..., :2], boxes2.coordinates[..., :2])
-        x2y2 = torch.min(boxes1.coordinates[..., 2:], boxes2.coordinates[..., 2:])
-        wh = torch.clamp(x2y2 - x1y1, min=0)
-
-        return self.__class__(
-            torch.cat([x1y1, wh], dim=-1),
-            BoundingBoxFormat.XYWH,
-            normalized,
-            boxes1.image_size,
-        )
 
     def move(self, device: torch.device, non_blocking: bool = False) -> Self:
         if self.device == device:
@@ -456,10 +442,7 @@ class BoundingBoxes(Moveable):
     def __getitem__(self, indexes: slice | Tensor) -> Self:
         """Get the bounding box at the given index."""
         return self.__class__(
-            self.coordinates[indexes],
-            self.format,
-            self.normalized,
-            self.image_size,
+            self.coordinates[indexes], self.format, self.normalized, self.image_size
         )
 
     def __len__(self) -> int:
@@ -475,6 +458,34 @@ class BoundingBoxes(Moveable):
 
     def __repr__(self) -> str:
         return str(self)
+
+    # -----------------------------------------------------------------------  #
+    # Private Methods
+    # -----------------------------------------------------------------------  #
+
+    def _check_compatibility(self, other: Self) -> None:
+        """Check that the bounding boxes are compatible.
+
+        The bounding boxes must have the same number of boxes and the same
+        image size.
+
+        Args:
+            other: The other bounding box object.
+
+        Raises:
+            ValueError: If the bounding boxes are not compatible.
+        """
+        if len(self) != len(other):
+            raise ValueError(
+                f"The number of bounding boxes must be the same, got {len(self)} "
+                f"and {len(other)}."
+            )
+
+        if self.image_size != other.image_size:
+            raise ValueError(
+                f"The bounding box image size must be the same, got {self.image_size} "
+                f"and {other.image_size}."
+            )
 
     # -----------------------------------------------------------------------  #
     # Private fields
@@ -510,41 +521,3 @@ def _check_coordinates(coords: Tensor) -> None:
 
     if not is_float_tensor(coords):
         raise ValueError(f"The coordinates must be a float tensor, got {coords.dtype}.")
-
-
-def _check_boxes(boxes1: BoundingBoxes, boxes2: BoundingBoxes) -> None:
-    """Check that the bounding boxes are compatible.
-
-    The bounding boxes must have the same number of boxes, format, normalization
-    and image size.
-
-    Args:
-        boxes1: The first bounding box object.
-        boxes2: The second bounding box object.
-
-    Raises:
-        ValueError: If the bounding boxes are not compatible.
-    """
-    if len(boxes1) != len(boxes2):
-        raise ValueError(
-            f"The number of bounding boxes must be the same, got {len(boxes1)} "
-            f"and {len(boxes2)}."
-        )
-
-    if boxes1.format != boxes2.format:
-        raise ValueError(
-            f"The bounding box format must be the same, got {boxes1.format} "
-            f"and {boxes2.format}."
-        )
-
-    if boxes1.normalized != boxes2.normalized:
-        raise ValueError(
-            f"The bounding box normalization must be the same, got {boxes1.normalized} "
-            f"and {boxes2.normalized}."
-        )
-
-    if boxes1.image_size != boxes2.image_size:
-        raise ValueError(
-            f"The bounding box image size must be the same, got {boxes1.image_size} "
-            f"and {boxes2.image_size}."
-        )

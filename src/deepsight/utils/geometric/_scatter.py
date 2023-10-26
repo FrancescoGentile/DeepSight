@@ -14,10 +14,7 @@ from ._reduce import ReduceOp
 
 
 def scatter_sum(
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     """Scatter sum operation."""
     index = _broadcast(index, src, dim)
@@ -28,10 +25,7 @@ def scatter_sum(
 
 
 def scatter_mul(
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     """Scatter multiply operation."""
     index = _broadcast(index, src, dim)
@@ -42,10 +36,7 @@ def scatter_mul(
 
 
 def scatter_mean(
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     """Scatter mean operation."""
     index = _broadcast(index, src, dim)
@@ -56,10 +47,7 @@ def scatter_mean(
 
 
 def scatter_min(
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     """Scatter min operation."""
     index = _broadcast(index, src, dim)
@@ -70,10 +58,7 @@ def scatter_min(
 
 
 def scatter_max(  # noqa
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     """Scatter max operation."""
     index = _broadcast(index, src, dim)
@@ -111,10 +96,7 @@ def scatter(
 
 
 def scatter_softmax(
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     """Scatter softmax operation."""
     if not is_float_tensor(src):
@@ -152,10 +134,7 @@ def _broadcast(src: Tensor, other: Tensor, dim: int) -> Tensor:
 
 
 def _create_output_tensor(
-    src: Tensor,
-    index: Tensor,
-    dim: int,
-    dim_output_size: int | None = None,
+    src: Tensor, index: Tensor, dim: int, dim_output_size: int | None = None
 ) -> Tensor:
     out_size = list(src.size())
     if dim_output_size is not None:

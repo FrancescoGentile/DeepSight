@@ -59,7 +59,6 @@ class Engine(Stateful, Generic[S, O, A, P]):
         device: torch.device | None = None,
         precision: torch.dtype = torch.float32,
         output_dir: Path | str = "./output",
-        seed: int = 3407,
         wandb_project: str | None = None,
     ) -> None:
         """Initialize the training engine."""
@@ -68,9 +67,6 @@ class Engine(Stateful, Generic[S, O, A, P]):
         self.output_dir.mkdir(parents=True, exist_ok=False)
         self.logger = _get_logger(self.output_dir / "train.log")
         self.logger.info(f"Output directory: {self.output_dir}.")
-
-        self.logger.info(f"Using seed: {seed}.")
-        _setup_libraries(seed)
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -132,6 +128,26 @@ class Engine(Stateful, Generic[S, O, A, P]):
         with open(self.output_dir / "configs.json", "w") as f:
             json.dump(configs, f, indent=2)
         self._setup_wandb(wandb_project, configs)
+
+    # ----------------------------------------------------------------------- #
+    # Public static methods
+    # ----------------------------------------------------------------------- #
+
+    @staticmethod
+    def setup_libraries(seed: int, deterministic: bool = False) -> None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.set_default_dtype(torch.float32)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = deterministic
+        torch.use_deterministic_algorithms(deterministic)
+
+    # ----------------------------------------------------------------------- #
+    # Public methods
+    # ----------------------------------------------------------------------- #
 
     def fit(self) -> None:
         """Starts the training loop."""
@@ -239,19 +255,14 @@ class Engine(Stateful, Generic[S, O, A, P]):
         return configs
 
     def _setup_wandb(
-        self,
-        project: str | None,
-        config: dict[str, JSONPrimitive],
+        self, project: str | None, config: dict[str, JSONPrimitive]
     ) -> None:
         if project is None:
             wandb.init(mode="disabled")
             return
 
         wandb.init(
-            job_type="train",
-            dir=self.output_dir,
-            config=config,
-            project=project,
+            job_type="train", dir=self.output_dir, config=config, project=project
         )
 
         wandb.define_metric("train/step", hidden=True)
@@ -498,26 +509,13 @@ class Engine(Stateful, Generic[S, O, A, P]):
 # --------------------------------------------------------------------------- #
 
 
-def _setup_libraries(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.set_default_dtype(torch.float32)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cudnn.deterministic = False
-    torch.use_deterministic_algorithms(False)
-
-
 def _get_logger(path: Path | None) -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
     formatter = logging.Formatter(
-        fmt="[%(asctime)s] %(levelname)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        fmt="[%(asctime)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     stream_handler = logging.StreamHandler()

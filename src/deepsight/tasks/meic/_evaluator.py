@@ -72,9 +72,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     # ----------------------------------------------------------------------- #
 
     def update(
-        self,
-        predictions: Batch[Predictions],
-        ground_truth: Batch[Predictions],
+        self, predictions: Batch[Predictions], ground_truth: Batch[Predictions]
     ) -> None:
         for prediction, target in zip(predictions, ground_truth, strict=True):
             pbm = prediction.interactions.int().to_dense()  # (N, H)
@@ -94,10 +92,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
             self._meic_metrics.update(pred_labels, target_labels)
 
     def compute_numeric_metrics(self) -> dict[str, float]:
-        return {
-            **self._cluster_metrics.compute(),
-            **self._meic_metrics.compute(),
-        }
+        return {**self._cluster_metrics.compute(), **self._meic_metrics.compute()}
 
     def reset(self) -> None:
         self._cluster_metrics.reset()

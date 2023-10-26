@@ -452,9 +452,7 @@ class HyperGraphStructureLearning(nn.Module):
         merge_indices = merge.nonzero(as_tuple=False)
 
         coboundary_matrix = torch.zeros(
-            (len(merge_indices), nodes.shape[0]),
-            dtype=torch.int,
-            device=nodes.device,
+            (len(merge_indices), nodes.shape[0]), dtype=torch.int, device=nodes.device
         )
         cluster_indices = torch.arange(len(merge_indices), device=nodes.device)
         coboundary_matrix[cluster_indices, merge_indices[:, 0]] = 1
@@ -811,8 +809,7 @@ def _compute_relative_distances(
 ) -> Annotated[Tensor, "B Q HW 2"]:
     H, W = images.shape[-2:]  # noqa
     image_coords = torch.cartesian_prod(
-        torch.arange(W, device=images.device),
-        torch.arange(H, device=images.device),
+        torch.arange(W, device=images.device), torch.arange(H, device=images.device)
     )  # (K, 2)
     image_coords = image_coords[None, None]  # (1, 1, HW, 2)
 

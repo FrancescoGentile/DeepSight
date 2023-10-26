@@ -70,10 +70,7 @@ class CombinatorialComplex:
             )
 
         _check_tensors(
-            cell_features,
-            boundary_matrices,
-            num_cells,
-            boundary_matrices_sizes,
+            cell_features, boundary_matrices, num_cells, boundary_matrices_sizes
         )
 
         self._cell_features = cell_features
@@ -166,14 +163,12 @@ class CombinatorialComplex:
     @overload
     def num_cells(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> int:
-        ...
+    ) -> int: ...
 
     @overload
     def num_cells(
         self, rank: int, batch_mode: Literal[BatchMode.STACK, BatchMode.SEQUENCE]
-    ) -> Iterable[int]:
-        ...
+    ) -> Iterable[int]: ...
 
     def num_cells(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
@@ -206,20 +201,17 @@ class CombinatorialComplex:
     @overload
     def cell_features(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N D", Number]:
-        ...
+    ) -> Annotated[Tensor, "N D", Number]: ...
 
     @overload
     def cell_features(
         self, rank: int, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N D", Number]:
-        ...
+    ) -> Annotated[Tensor, "B N D", Number]: ...
 
     @overload
     def cell_features(
         self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N D", Number]]:
-        ...
+    ) -> Iterable[Annotated[Tensor, "N D", Number]]: ...
 
     def cell_features(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
@@ -265,20 +257,17 @@ class CombinatorialComplex:
     @overload
     def boundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N M", Number, torch.sparse_coo]:
-        ...
+    ) -> Annotated[Tensor, "N M", Number, torch.sparse_coo]: ...
 
     @overload
     def boundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N M", Number, torch.sparse_coo]:
-        ...
+    ) -> Annotated[Tensor, "B N M", Number, torch.sparse_coo]: ...
 
     @overload
     def boundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N M", Number, torch.sparse_coo]]:
-        ...
+    ) -> Iterable[Annotated[Tensor, "N M", Number, torch.sparse_coo]]: ...
 
     def boundary_matrix(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
@@ -373,20 +362,17 @@ class CombinatorialComplex:
     @overload
     def coboundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "M N", Number, torch.sparse_coo]:
-        ...
+    ) -> Annotated[Tensor, "M N", Number, torch.sparse_coo]: ...
 
     @overload
     def coboundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B M N", Number, torch.sparse_coo]:
-        ...
+    ) -> Annotated[Tensor, "B M N", Number, torch.sparse_coo]: ...
 
     @overload
     def coboundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "M N", Number, torch.sparse_coo]]:
-        ...
+    ) -> Iterable[Annotated[Tensor, "M N", Number, torch.sparse_coo]]: ...
 
     def coboundary_matrix(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT

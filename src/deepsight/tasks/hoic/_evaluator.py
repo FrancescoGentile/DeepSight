@@ -101,7 +101,8 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
                 "f1_score": MultilabelF1Score(
                     num_labels=num_interaction_classes, average="weighted"
                 ),
-            }
+            },
+            compute_groups=False,
         )
 
     # ----------------------------------------------------------------------- #
@@ -126,9 +127,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     # ----------------------------------------------------------------------- #
 
     def update(
-        self,
-        predictions: Batch[Predictions],
-        ground_truth: Batch[Predictions],
+        self, predictions: Batch[Predictions], ground_truth: Batch[Predictions]
     ) -> None:
         predicted_labels = []
         target_labels = []
@@ -167,9 +166,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
         return self
 
     def get_state(self) -> dict[str, Any]:
-        return {
-            "metrics": self._metrics.state_dict(),
-        }
+        return {"metrics": self._metrics.state_dict()}
 
     def set_state(self, state: dict[str, Any]) -> None:
         self._metrics.load_state_dict(state["metrics"])

@@ -32,11 +32,10 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
         pred_interactions, pred_labels = output.interactions, output.interaction_logits
         gt_interactions, gt_labels = _batch(annotations, output.num_nodes)
 
-        same_subject = pred_interactions[0].unsqueeze(1) == gt_interactions[0]
-        same_object = pred_interactions[1].unsqueeze(1) == gt_interactions[1]
-        matched = same_subject & same_object
-
+        matched = pred_interactions.unsqueeze(1) == gt_interactions  # (I, I', 2)
+        matched = matched.all(dim=2)  # (I, I')
         matched_pred, matched_target = torch.nonzero(matched, as_tuple=True)
+
         target = torch.zeros_like(pred_labels)
         target[matched_pred] = gt_labels[matched_target]
 
@@ -50,10 +49,7 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
         return {"focal_loss": loss}
 
     def get_config(self) -> JSONPrimitive:
-        return {
-            "focal_alpha": self.focal_alpha,
-            "focal_gamma": self.focal_gamma,
-        }
+        return {"focal_alpha": self.focal_alpha, "focal_gamma": self.focal_gamma}
 
 
 # --------------------------------------------------------------------------- #

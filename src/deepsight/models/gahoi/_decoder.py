@@ -9,7 +9,7 @@ import torch.sparse
 from torch import Tensor, nn
 
 from deepsight.structures import BatchedBoundingBoxes, BatchMode, Graph
-from deepsight.utils.scatter import scatter_softmax, scatter_sum
+from deepsight.utils.geometric import scatter_softmax, scatter_sum
 
 
 class GraphAttention(nn.Module):
@@ -75,9 +75,7 @@ class GraphAttention(nn.Module):
         self.attn_dropout = nn.Dropout(attn_dropout)
 
         self.message_proj = nn.Linear(
-            node_dim + edge_dim if edge_dim is not None else 0,
-            node_dim,
-            bias=bias,
+            node_dim + edge_dim if edge_dim is not None else 0, node_dim, bias=bias
         )
 
         self.out_proj = nn.Linear(node_dim, node_dim, bias=bias)
@@ -381,8 +379,7 @@ def _compute_relative_distances(
 ) -> Annotated[Tensor, "B Q HW 2"]:
     H, W = images.shape[-2:]  # noqa
     image_coords = torch.cartesian_prod(
-        torch.arange(W, device=images.device),
-        torch.arange(H, device=images.device),
+        torch.arange(W, device=images.device), torch.arange(H, device=images.device)
     )  # (K, 2)
     image_coords = image_coords[None, None]  # (1, 1, HW, 2)
 

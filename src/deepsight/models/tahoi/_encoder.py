@@ -17,10 +17,7 @@ from deepsight.structures import Image
 
 class ViTEncoder(nn.Module):
     def __init__(
-        self,
-        name: str,
-        image_size: int | tuple[int, int],
-        out_channels: int,
+        self, name: str, image_size: int | tuple[int, int], out_channels: int
     ) -> None:
         """Initialize the ViT encoder.
 
