@@ -32,8 +32,8 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
         pred_interactions, pred_labels = output.interactions, output.interaction_logits
         gt_interactions, gt_labels = _batch(annotations, output.num_nodes)
 
-        matched = pred_interactions.unsqueeze(1) == gt_interactions  # (I, I', 2)
-        matched = matched.all(dim=2)  # (I, I')
+        matched = pred_interactions.unsqueeze(1) == gt_interactions  # (E, E', 2)
+        matched = matched.all(dim=2)  # (E, E')
         matched_pred, matched_target = torch.nonzero(matched, as_tuple=True)
 
         target = torch.zeros_like(pred_labels)
@@ -59,14 +59,14 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
 
 def _batch(
     annotations: Batch[Annotations], num_nodes: list[int]
-) -> tuple[Annotated[Tensor, "2 E", int], Annotated[Tensor, "E C", float]]:
+) -> tuple[Annotated[Tensor, "E 2", int], Annotated[Tensor, "E C", float]]:
     node_offset = 0
     interactions = []
     for n_nodes, annotation in zip(num_nodes, annotations, strict=True):
         interactions.append(annotation.interactions + node_offset)
         node_offset += n_nodes
 
-    interactions = torch.cat(interactions, dim=1)
+    interactions = torch.cat(interactions)
     interaction_labels = torch.cat([s.interaction_labels for s in annotations])
 
     return interactions, interaction_labels

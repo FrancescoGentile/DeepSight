@@ -197,9 +197,9 @@ class CrossAttention(nn.Module):
         q = q.view(B, Q, self.num_heads, self.head_dim).transpose(1, 2)
 
         kv = self.kv_proj(images)
-        kv = kv.view(B, K, 2, self.num_heads, self.head_dim)
-        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, K, D)
-        k, v = kv.unbind(dim=0)
+        kv = kv.view(B, K, self.num_heads, 2 * self.head_dim)
+        kv = kv.transpose(1, 2)  # (B, H, K, 2D)
+        k, v = kv.chunk(2, dim=-1)  # (B, H, K, D)
 
         # compute attention scores
         attn_logits = torch.matmul(q, k.transpose(-2, -1))  # (B, H, Q, K)

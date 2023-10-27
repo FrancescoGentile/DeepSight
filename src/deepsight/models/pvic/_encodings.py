@@ -14,36 +14,36 @@ from deepsight.structures import BatchedBoundingBoxes, BatchedImages
 def compute_pairwise_spatial_encodings(
     human_boxes: BatchedBoundingBoxes, object_boxes: BatchedBoundingBoxes
 ) -> Annotated[Tensor, "B N 36", float]:
+    eps = torch.finfo(human_boxes.coordinates.dtype).eps
     encodings = []  # list of tensors of shape (B, N)
 
     human_boxes = human_boxes.normalize().to_cxcywh()
     object_boxes = object_boxes.normalize().to_cxcywh()
 
-    encodings.extend([human_boxes.coordinates[:, i] for i in range(4)])
-    encodings.extend([object_boxes.coordinates[:, i] for i in range(4)])
+    encodings.extend([human_boxes.coordinates[..., i] for i in range(4)])
+    encodings.extend([object_boxes.coordinates[..., i] for i in range(4)])
 
     human_area = human_boxes.area()
     object_area = object_boxes.area()
 
     encodings.append(human_area)
     encodings.append(object_area)
-    encodings.append(object_area / human_area)
+    encodings.append(object_area / (human_area + eps))
 
     encodings.append(human_boxes.aspect_ratio())
     encodings.append(object_boxes.aspect_ratio())
 
     encodings.append(human_boxes.iou(object_boxes))
 
-    dx = human_boxes.coordinates[:, 0] - object_boxes.coordinates[:, 0]
-    dx = dx / human_boxes.coordinates[:, 2]
+    dx = human_boxes.coordinates[..., 0] - object_boxes.coordinates[..., 0]
+    dx = dx / (human_boxes.coordinates[..., 2] + eps)
 
-    dy = human_boxes.coordinates[:, 1] - object_boxes.coordinates[:, 1]
-    dy = dy / human_boxes.coordinates[:, 3]
+    dy = human_boxes.coordinates[..., 1] - object_boxes.coordinates[..., 1]
+    dy = dy / (human_boxes.coordinates[..., 3] + eps)
 
     encodings.extend([F.relu(dx), F.relu(-dx), F.relu(dy), F.relu(-dy)])
 
     encodings = torch.stack(encodings, dim=2)  # (B, N, 18)
-    eps = torch.finfo(encodings.dtype).eps
     log_encodings = torch.log(encodings + eps)
     encodings = torch.cat([encodings, log_encodings], dim=2)  # (B, N, 36)
 

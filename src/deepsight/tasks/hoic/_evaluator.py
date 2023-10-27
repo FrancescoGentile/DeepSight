@@ -181,10 +181,9 @@ def _match_prediction_ground_truth(
     pred: Predictions, ground_truth: Predictions
 ) -> tuple[Annotated[Tensor, "M V", float], Annotated[Tensor, "M V", bool]]:
     num_classes = pred.interaction_labels.shape[1]
-    same_subject = pred.interactions[0].unsqueeze(1) == ground_truth.interactions[0]
-    same_object = pred.interactions[1].unsqueeze(1) == ground_truth.interactions[1]
 
-    matched = same_subject & same_object  # (E_pred, E_target)
+    matched = pred.interactions.unsqueeze(1) == ground_truth.interactions  # (I, I', 2)
+    matched = matched.all(dim=2)  # (I, I')
     matched_pred, matched_target = torch.nonzero(matched, as_tuple=True)
 
     not_matched = matched.logical_not_()

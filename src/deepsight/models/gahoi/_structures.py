@@ -12,5 +12,5 @@ from torch import Tensor
 class Output:
     num_nodes: list[int]
     num_edges: list[int]
-    interactions: Annotated[Tensor, "2 E", int]
+    interactions: Annotated[Tensor, "E 2", int]
     interaction_logits: Annotated[Tensor, "E C", float]

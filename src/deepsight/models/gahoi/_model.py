@@ -123,6 +123,8 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
 
         first_node = edge_features[edge_indices[0]]
         second_node = edge_features[edge_indices[1]]
+        edge_features = edge_features[keep]
+
         interaction_features = torch.cat(
             [first_node, second_node, edge_features], dim=1
         )
@@ -135,7 +137,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         return Output(
             num_nodes=list(graphs.num_nodes(BatchMode.SEQUENCE)),
             num_edges=num_edges,
-            interactions=edge_indices,
+            interactions=edge_indices.transpose(0, 1),
             interaction_logits=interaction_logits,
         )
 
@@ -143,7 +145,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         predictions = []
         node_offset = 0
 
-        interactions = output.interactions.split_with_sizes(output.num_edges, dim=1)
+        interactions = output.interactions.split_with_sizes(output.num_edges)
         interaction_logits = F.sigmoid(output.interaction_logits)
         interaction_labels = interaction_logits.split_with_sizes(output.num_edges)
 
@@ -196,6 +198,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     def _get_edge_features(
         self, edges: Annotated[Tensor, "2 E", int], boxes: BoundingBoxes
     ) -> Annotated[Tensor, "E D", float]:
+        eps = torch.finfo(boxes.coordinates.dtype).eps
         edge_features = []
 
         boxes = boxes.normalize().to_cxcywh()
@@ -211,20 +214,19 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         area2 = boxes2.area()
         edge_features.append(area1)
         edge_features.append(area2)
-        edge_features.append(area1 / area2)
+        edge_features.append(area1 / (area2 + eps))
 
         edge_features.append(boxes1.iou(boxes2))
 
         dx = boxes1.coordinates[:, 0] - boxes2.coordinates[:, 0]
-        dx = dx / boxes1.coordinates[:, 2]
+        dx = dx / (boxes1.coordinates[:, 2] + eps)
 
         dy = boxes1.coordinates[:, 1] - boxes2.coordinates[:, 1]
-        dy = dy / boxes1.coordinates[:, 3]
+        dy = dy / (boxes1.coordinates[:, 3] + eps)
 
         edge_features.extend([F.relu(dx), F.relu(-dx), F.relu(dy), F.relu(-dy)])
 
         edge_features = torch.stack(edge_features, dim=1)
-        eps = torch.finfo(edge_features.dtype).eps
         edge_features = torch.cat(
             [edge_features, torch.log(edge_features + eps)], dim=1
         )

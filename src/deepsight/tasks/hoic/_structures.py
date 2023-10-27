@@ -49,21 +49,21 @@ class Predictions(Moveable):
 
     Attributes:
         interactions: The indices of the interactions between the entities.
-            This is a tensor of shape `(2, M)`, where `M` is the number of interactions.
+            This is a tensor of shape `(I, 2)`, where `I` is the number of interactions.
             The first row contains the indices of the subject entities (i.e., the human)
             and the second row contains the indices of the object entities (if
             human-human interactions are included, the object entity can also
             be a human).
         interaction_labels: The probabilities of the interactions. The shape of this
-            tensor is `(M, C)` where `M` is the number of interactions and `C` is the
+            tensor is `(I, C)` where `I` is the number of interactions and `C` is the
             number of interaction classes. The `(i, j)`-th element of this tensor is
             the probability that the `i`-th interaction is of class `j`. Note that an
             interaction can be of multiple classes (thus, the sum of the probabilities
             of each interaction can be greater than 1.0).
     """
 
-    interactions: Annotated[Tensor, "2 M", int]
-    interaction_labels: Annotated[Tensor, "M C", float]
+    interactions: Annotated[Tensor, "I 2", int]
+    interaction_labels: Annotated[Tensor, "I C", float]
 
     @property
     def device(self) -> torch.device:

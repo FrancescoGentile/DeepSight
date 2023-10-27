@@ -48,10 +48,10 @@ class TransformerEncoderLayer(nn.Module):
         positional_encodings: Annotated[Tensor, "B N 2D"],
     ) -> BatchedSequences:
         qkv = self.qkv_prok(inputs.data)  # (B, N, 3 * D)
-        q, k, v = qkv.unbind(dim=-1)  # (B, N, D)
+        q, k, v = qkv.chunk(3, dim=-1)  # (B, N, D)
 
         qk_pos = self.qk_pos_proj(positional_encodings)  # (B, N, 2 * D)
-        q_pos, k_pos = qk_pos.unbind(dim=-1)  # (B, N, D)
+        q_pos, k_pos = qk_pos.chunk(2, dim=-1)  # (B, N, D)
 
         q = q + q_pos
         k = k + k_pos
@@ -155,10 +155,10 @@ class TransformerDecoderLayer(nn.Module):
     ) -> BatchedSequences:
         # Self-Attention
         qkv = self.sa_qkv_proj(queries.data)  # (B, Q, 3 * D)
-        q, k, v = qkv.unbind(dim=-1)
+        q, k, v = qkv.chunk(3, dim=-1)
 
         qk_pos = self.sa_qk_pos_proj(box_positional_encodings)  # (B, Q, 2 * D)
-        q_pos, k_pos = qk_pos.unbind(dim=-1)
+        q_pos, k_pos = qk_pos.chunk(2, dim=-1)
 
         q = q + q_pos
         k = k + k_pos
@@ -173,7 +173,7 @@ class TransformerDecoderLayer(nn.Module):
         # Cross-Attention
         q = self.ca_q_proj(sa_output)  # (B, Q, D)
         kv = self.ca_kv_proj(key_values.data)  # (B, K, 2 * D)
-        k, v = kv.unbind(dim=-1)
+        k, v = kv.chunk(2, dim=-1)
 
         q_pos = self.ca_q_pos_proj(center_positional_encodings)  # (B, Q, D)
         k_pos = self.ca_k_pos_proj(key_value_positional_encodings)  # (B, K, D)

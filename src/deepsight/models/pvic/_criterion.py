@@ -12,11 +12,12 @@ from torchvision.ops import sigmoid_focal_loss
 from deepsight.models import Criterion as _Criterion
 from deepsight.structures import Batch
 from deepsight.tasks.hoic import Annotations
+from deepsight.typing import Configurable, JSONPrimitive
 
 from ._structures import Output
 
 
-class Criterion(_Criterion[Output, Annotations]):
+class Criterion(_Criterion[Output, Annotations], Configurable):
     def __init__(self, focal_alpha: float = 0.25, focal_gamma: float = 2.0) -> None:
         super().__init__()
 
@@ -46,6 +47,12 @@ class Criterion(_Criterion[Output, Annotations]):
         )
 
         return {"focal_loss": focal_loss}
+
+    def get_config(self) -> JSONPrimitive:
+        return {
+            "focal_alpha": self.focal_alpha,
+            "focal_gamma": self.focal_gamma,
+        }
 
 
 # --------------------------------------------------------------------------- #

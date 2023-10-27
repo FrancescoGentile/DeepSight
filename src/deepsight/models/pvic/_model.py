@@ -122,10 +122,12 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
         self, samples: Batch[Sample], annotations: Batch[Annotations] | None
     ) -> Output:
         images = self.vit_encoder((sample.image for sample in samples))
-        H, W = images.shape[-2:]  # noqa
-        boxes = [s.entities.resize((H, W)).denormalize().to_xyxy() for s in samples]
+        boxes = [
+            s.entities.resize(img_size).denormalize().to_xyxy()
+            for s, img_size in zip(samples, images.image_sizes, strict=True)
+        ]
         coords = [box.coordinates for box in boxes]
-        entity_embeddings = self.roi_align(images, coords)
+        entity_embeddings = self.roi_align(images.data, coords)
         entity_embeddings = entity_embeddings.flatten(1)
         entity_embeddings = entity_embeddings.split_with_sizes([len(b) for b in boxes])
 
@@ -136,7 +138,7 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
         )
         entity_embeddings = self.entity_encoder(entity_embeddings, box_pe)  # (B, N, C)
 
-        ho_indices = []
+        sample_ho_indices = []
         human_boxes = []
         object_boxes = []
         ho_embeddings = []
@@ -145,7 +147,7 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
 
         for idx, sample in enumerate(samples):
             pairs = self._create_matches(sample)
-            ho_indices.append(pairs)
+            sample_ho_indices.append(pairs)
 
             human_boxes.append(sample.entities[pairs[:, 0]])
             object_boxes.append(sample.entities[pairs[:, 1]])
@@ -184,14 +186,23 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
 
         ho_logits = self.classifier(ho_embeddings.data)  # (B, I, V)
 
-        logits = []
-        for idx, sample in enumerate(samples):
-            logits.append(ho_logits[idx, : len(sample.entities)])
+        sample_logits = []
+        for idx, indices in enumerate(sample_ho_indices):
+            sample_logits.append(ho_logits[idx, : len(indices)])
 
-        return Output(logits, ho_indices, [len(s.entities) for s in samples])
+        return Output(
+            sample_logits, sample_ho_indices, [len(s.entities) for s in samples]
+        )
 
     def postprocess(self, output: Output) -> Batch[Predictions]:
-        raise NotImplementedError
+        return Batch(
+            (
+                Predictions(indices, torch.sigmoid(logits))
+                for indices, logits in zip(
+                    output.ho_indices, output.ho_logits, strict=True
+                )
+            )
+        )
 
     # ----------------------------------------------------------------------- #
     # Private Methods
@@ -224,11 +235,16 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
 
         box_pe = torch.cat([cx_pe, wh_pe], dim=-1)
 
-        ref_wh_cond = self.ref_anchor_head(embeddings.data)
+        ref_wh_cond = self.ref_anchor_head(embeddings.data).sigmoid()
         eps = torch.finfo(boxes.coordinates.dtype).eps
 
         boxes = boxes.to_cxcywh()
-        cx_pe[..., :pos_dim] *= ref_wh_cond[..., 0] / (boxes.coordinates[..., 2] + eps)
-        cx_pe[..., pos_dim:] *= ref_wh_cond[..., 1] / (boxes.coordinates[..., 3] + eps)
+        w_cond = (ref_wh_cond[..., 0] / (boxes.coordinates[..., 2] + eps)).unsqueeze(-1)
+        h_cond = (ref_wh_cond[..., 1] / (boxes.coordinates[..., 3] + eps)).unsqueeze(-1)
+
+        # we always put the x (/width) coordinate first, also when creating the 2d
+        # sinusoidal position encodings for the images
+        cx_pe[..., :pos_dim] *= w_cond
+        cx_pe[..., pos_dim:] *= h_cond
 
         return box_pe, cx_pe

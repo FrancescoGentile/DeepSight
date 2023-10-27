@@ -116,10 +116,9 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
                 interaction_to_idx[interaction] = len(interaction_to_idx)
 
         if len(interaction_to_idx) == 0:
-            interactions = torch.empty((2, 0), dtype=torch.long)
+            interactions = torch.empty((0, 2), dtype=torch.long)
         else:
-            interactions = torch.as_tensor(list(interaction_to_idx.keys()))  # (E, 2)
-            interactions.transpose_(0, 1)  # (2, E)
+            interactions = torch.as_tensor(list(interaction_to_idx.keys()))  # (I, 2)
 
         interaction_labels = torch.zeros(
             (len(interaction_to_idx), self.num_interaction_classes), dtype=torch.float

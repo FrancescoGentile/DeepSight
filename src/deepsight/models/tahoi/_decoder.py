@@ -597,9 +597,9 @@ class CrossAttention(nn.Module):
         eq = eq.view(B, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
         kv = self.kv_proj(images)  # (B, L, D)
-        kv = kv.view(B, L, 2, self.num_heads, self.head_dim)
-        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, L, D)
-        k, v = kv.unbind(dim=0)
+        kv = kv.view(B, L, self.num_heads, 2 * self.head_dim)
+        kv = kv.transpose(1, 2)  # (B, H, L, 2D)
+        k, v = kv.chunk(2, dim=-1)  # (B, H, L, D)
 
         node_attn_logits = (nq @ k.transpose(-1, -2)) * self.norm_factor
         node_attn_logits = node_attn_logits + node_cpb
