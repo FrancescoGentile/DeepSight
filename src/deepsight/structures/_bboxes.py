@@ -10,7 +10,6 @@ from torch import Tensor
 from typing_extensions import Self
 
 from deepsight.typing import Moveable
-from deepsight.utils import is_float_tensor
 
 
 class BoundingBoxFormat(enum.Enum):
@@ -70,7 +69,7 @@ class BoundingBoxes(Moveable):
         """
         super().__init__()
 
-        coords: Tensor = torch.as_tensor(coordinates)
+        coords: Tensor = torch.as_tensor(coordinates).float()
         _check_coordinates(coords)
 
         self._coordinates = coords
@@ -518,6 +517,3 @@ def _check_coordinates(coords: Tensor) -> None:
         raise ValueError(
             f"The last dimension of coordinates must be 4, got {coords.shape[-1]}."
         )
-
-    if not is_float_tensor(coords):
-        raise ValueError(f"The coordinates must be a float tensor, got {coords.dtype}.")

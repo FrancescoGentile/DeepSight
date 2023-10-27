@@ -121,8 +121,8 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         keep = entity_labels[edge_indices[0]] == self.human_class_id
         edge_indices = edge_indices[:, keep]
 
-        first_node = edge_features[edge_indices[0]]
-        second_node = edge_features[edge_indices[1]]
+        first_node = graphs.node_features()[edge_indices[0]]
+        second_node = graphs.node_features()[edge_indices[1]]
         edge_features = edge_features[keep]
 
         interaction_features = torch.cat(

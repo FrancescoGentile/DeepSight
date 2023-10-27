@@ -310,11 +310,14 @@ class Engine(Stateful, Generic[S, O, A, P]):
                     self._train_epoch(current_epoch, True)
                     self.scheduler.stop_cooldown()
 
+                    self._eval_epoch(current_epoch)
+
                     # restore state
                     state = torch.load(self.output_dir / "tmp_state.pt")
                     self.set_state(state)
+                else:
+                    self._eval_epoch(current_epoch)
 
-                self._eval_epoch(current_epoch)
                 torch.cuda.empty_cache()
 
                 metrics = self.evaluator.compute_numeric_metrics()
@@ -472,7 +475,7 @@ class Engine(Stateful, Generic[S, O, A, P]):
                 device_type=self.device.type,
                 dtype=self.precision,
             ):
-                outputs = self.model(samples, annotations)
+                outputs = self.model(samples, None)
                 batch_losses = self.criterion.compute(outputs, annotations)
                 total_loss = 0.0
 

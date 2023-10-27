@@ -24,7 +24,7 @@ class BatchedBoundingBoxes:
         normalized: bool,
         image_sizes: tuple[tuple[int, int], ...],
     ) -> None:
-        self._coordinates = coordinates
+        self._coordinates = coordinates.float()
         self._format = format
         self._normalized = normalized
         self._image_sizes = image_sizes

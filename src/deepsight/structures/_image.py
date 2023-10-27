@@ -25,7 +25,7 @@ class Image(Moveable):
 
     @classmethod
     def open(cls, path: Path | str) -> Self:
-        return cls(io.read_image(str(path)))
+        return cls(io.read_image(str(path), mode=io.ImageReadMode.RGB))
 
     # ----------------------------------------------------------------------- #
     # Properties

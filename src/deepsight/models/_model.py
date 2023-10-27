@@ -52,5 +52,5 @@ class DeepSightModel(nn.Module, Moveable, Stateful, Generic[S, O, A, P], abc.ABC
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    def __call__(self, samples: Batch[S], annotations: Batch[A] | None) -> O:
+    def __call__(self, samples: Batch[S], annotations: Batch[A] | None = None) -> O:
         return super().__call__(samples, annotations)

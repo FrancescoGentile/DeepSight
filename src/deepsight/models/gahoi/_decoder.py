@@ -51,31 +51,32 @@ class GraphAttention(nn.Module):
         if hidden_dim is None:
             hidden_dim = node_dim
 
-        if hidden_dim % num_heads != 0:
+        if node_dim % num_heads != 0:
             raise ValueError(
-                f"hidden_dim ({hidden_dim}) must be divisible by num_heads ({num_heads})."  # noqa
+                f"node_dim ({hidden_dim}) must be divisible by num_heads ({num_heads})."  # noqa
             )
 
         self.num_heads = num_heads
-        self.head_dim = hidden_dim // num_heads
+        self.head_dim = node_dim // num_heads
+        self.hidden_dim = hidden_dim
 
-        self.ni_proj = nn.Linear(node_dim, hidden_dim, bias=bias)
+        self.ni_proj = nn.Linear(node_dim, hidden_dim * num_heads, bias=bias)
         if share_weights:
             self.nj_proj = self.ni_proj
         else:
-            self.nj_proj = nn.Linear(node_dim, hidden_dim, bias=bias)
+            self.nj_proj = nn.Linear(node_dim, hidden_dim * num_heads, bias=bias)
 
         if edge_dim is None:
             self.e_proj = None
         else:
-            self.e_proj = nn.Linear(edge_dim, hidden_dim, bias=bias)
+            self.e_proj = nn.Linear(edge_dim, hidden_dim * num_heads, bias=bias)
 
         self.leaky_relu = nn.LeakyReLU(negative_slope)
-        self.attn_proj = nn.Parameter(torch.randn(self.num_heads, self.head_dim))
+        self.attn_proj = nn.Parameter(torch.randn(self.num_heads, self.hidden_dim))
         self.attn_dropout = nn.Dropout(attn_dropout)
 
         self.message_proj = nn.Linear(
-            node_dim + edge_dim if edge_dim is not None else 0, node_dim, bias=bias
+            node_dim + (edge_dim if edge_dim is not None else 0), node_dim, bias=bias
         )
 
         self.out_proj = nn.Linear(node_dim, node_dim, bias=bias)
@@ -97,7 +98,7 @@ class GraphAttention(nn.Module):
             hidden = ni_hidden + nj_hidden
 
         hidden = self.leaky_relu(hidden)
-        hidden = hidden.view(-1, self.num_heads, self.head_dim)
+        hidden = hidden.view(-1, self.num_heads, self.hidden_dim)
         attn_logits = (hidden * self.attn_proj).sum(dim=-1)  # (E, H)
 
         attn_scores = scatter_softmax(

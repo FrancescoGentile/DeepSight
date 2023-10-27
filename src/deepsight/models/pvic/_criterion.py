@@ -40,7 +40,7 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
         pred_logits = torch.cat(output.ho_logits)
         interaction_labels = torch.cat([ann.interaction_labels for ann in annotations])
         gt_labels = torch.zeros_like(pred_logits)
-        gt_labels[matched_pred] = interaction_labels[matched_gt]
+        gt_labels[matched_pred] = interaction_labels[matched_gt].to(gt_labels.dtype)
 
         focal_loss = sigmoid_focal_loss(
             pred_logits, gt_labels, self.focal_alpha, self.focal_gamma, reduction="mean"

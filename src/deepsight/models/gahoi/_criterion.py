@@ -37,7 +37,7 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
         matched_pred, matched_target = torch.nonzero(matched, as_tuple=True)
 
         target = torch.zeros_like(pred_labels)
-        target[matched_pred] = gt_labels[matched_target]
+        target[matched_pred] = gt_labels[matched_target].to(target.dtype)
 
         loss = ops.sigmoid_focal_loss(
             pred_labels,
