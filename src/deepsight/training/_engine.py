@@ -21,7 +21,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from tqdm import tqdm
 
-from deepsight.models import Criterion, DeepSightModel
+from deepsight.nn.models import Criterion, DeepSightModel
 from deepsight.tasks import Dataset, Evaluator, MetricType
 from deepsight.typing import Configurable, JSONPrimitive, Moveable, Stateful
 

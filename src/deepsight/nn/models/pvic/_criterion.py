@@ -9,7 +9,7 @@ import torch
 from torch import Tensor
 from torchvision.ops import sigmoid_focal_loss
 
-from deepsight.models import Criterion as _Criterion
+from deepsight.nn.models import Criterion as _Criterion
 from deepsight.structures import Batch
 from deepsight.tasks.hoic import Annotations
 from deepsight.typing import Configurable, JSONPrimitive
@@ -69,7 +69,7 @@ def _batch_indices(
     entity_offset = 0
     for idx in range(len(annotations)):
         pred = output.ho_indices[idx]
-        gt = annotations[idx].interactions
+        gt = annotations[idx].interaction_indices
 
         if entity_offset > 0:
             pred = pred + entity_offset

@@ -19,13 +19,13 @@ class Sample(Moveable):
 
     Attributes:
         image: The image containing the scene with the entities and interactions.
-        entities: The bounding boxes of the entities in the image.
+        entity_boxes: The bounding boxes of the entities in the image.
         entity_labels: The class indices of the entities. The length of this
             tensor is equal to the number of bounding boxes in `entities`.
     """
 
     image: Image
-    entities: BoundingBoxes
+    entity_boxes: BoundingBoxes
     entity_labels: Annotated[Tensor, "N", int]
 
     @property
@@ -38,7 +38,7 @@ class Sample(Moveable):
 
         return self.__class__(
             self.image.move(device, non_blocking=non_blocking),
-            self.entities.move(device, non_blocking=non_blocking),
+            self.entity_boxes.move(device, non_blocking=non_blocking),
             self.entity_labels.to(device, non_blocking=non_blocking),
         )
 
@@ -48,7 +48,7 @@ class Predictions(Moveable):
     """The output for a Human-Object Interaction (HOI) sample.
 
     Attributes:
-        interactions: The indices of the interactions between the entities.
+        interaction_indices: The indices of the interactions between the entities.
             This is a tensor of shape `(I, 2)`, where `I` is the number of interactions.
             The first row contains the indices of the subject entities (i.e., the human)
             and the second row contains the indices of the object entities (if
@@ -62,19 +62,19 @@ class Predictions(Moveable):
             of each interaction can be greater than 1.0).
     """
 
-    interactions: Annotated[Tensor, "I 2", int]
+    interaction_indices: Annotated[Tensor, "I 2", int]
     interaction_labels: Annotated[Tensor, "I C", float]
 
     @property
     def device(self) -> torch.device:
-        return self.interactions.device
+        return self.interaction_indices.device
 
     def move(self, device: torch.device, non_blocking: bool = False) -> Self:
         if self.device == device:
             return self
 
         return self.__class__(
-            self.interactions.to(device, non_blocking=non_blocking),
+            self.interaction_indices.to(device, non_blocking=non_blocking),
             self.interaction_labels.to(device, non_blocking=non_blocking),
         )
 

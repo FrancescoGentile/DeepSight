@@ -6,6 +6,7 @@
 
 from ._evaluator import ErrorStrategy, Evaluator
 from ._h2o_dataset import H2ODataset
+from ._hicodet_dataset import HICODETDataset
 from ._structures import Annotations, Predictions, Sample
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "ErrorStrategy",
     "Evaluator",
     "H2ODataset",
+    "HICODETDataset",
     "Predictions",
     "Sample",
 ]

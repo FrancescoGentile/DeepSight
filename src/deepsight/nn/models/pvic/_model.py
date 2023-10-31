@@ -12,7 +12,7 @@ from torch import Tensor, nn
 from torch.nn.utils.rnn import pad_sequence
 from torchvision.ops import RoIAlign
 
-from deepsight.models import DeepSightModel
+from deepsight.nn.models import DeepSightModel
 from deepsight.structures import Batch, BatchedBoundingBoxes, BatchedSequences
 from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configurable, JSONPrimitive
@@ -123,7 +123,7 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
     ) -> Output:
         images = self.vit_encoder((sample.image for sample in samples))
         boxes = [
-            s.entities.resize(img_size).denormalize().to_xyxy()
+            s.entity_boxes.resize(img_size).denormalize().to_xyxy()
             for s, img_size in zip(samples, images.image_sizes, strict=True)
         ]
         coords = [box.coordinates for box in boxes]
@@ -149,8 +149,8 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
             pairs = self._create_matches(sample)
             sample_ho_indices.append(pairs)
 
-            human_boxes.append(sample.entities[pairs[:, 0]])
-            object_boxes.append(sample.entities[pairs[:, 1]])
+            human_boxes.append(sample.entity_boxes[pairs[:, 0]])
+            object_boxes.append(sample.entity_boxes[pairs[:, 1]])
 
             human_embeds = entity_embeddings.data[idx, pairs[:, 0]]
             object_embeds = entity_embeddings.data[idx, pairs[:, 1]]
@@ -191,7 +191,7 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
             sample_logits.append(ho_logits[idx, : len(indices)])
 
         return Output(
-            sample_logits, sample_ho_indices, [len(s.entities) for s in samples]
+            sample_logits, sample_ho_indices, [len(s.entity_boxes) for s in samples]
         )
 
     def postprocess(self, output: Output) -> Batch[Predictions]:

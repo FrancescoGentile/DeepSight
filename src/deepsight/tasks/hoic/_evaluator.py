@@ -4,7 +4,7 @@
 
 import enum
 from collections.abc import Iterable
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import torch
 from torch import Tensor
@@ -50,12 +50,13 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     """Evaluator for the Human-Object Interaction (HOI) task.
 
     The evaluator computes the accuracy, precision, recall, and F1 score of the
-    predictions. At the moment, only the weighted-averaged metrics are supported.
+    predictions.
     """
 
     def __init__(
         self,
         num_interaction_classes: int,
+        average: Literal["macro", "macro", "weighted"] = "weighted",
         error_strategy: ErrorStrategy = ErrorStrategy.NONE,
         human_class_id: int | None = None,
         allow_human_human: bool | None = None,
@@ -64,6 +65,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
 
         Args:
             num_interaction_classes: The number of interaction classes.
+            average: The averaging strategy to use for the metrics.
             error_strategy: The error strategy to use when a prediction is invalid.
             human_class_id: The class ID of the human class. This must be set if
                 `error_strategy` is not set to `ErrorStrategy.NONE`.
@@ -90,16 +92,16 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
         self._metrics = MetricCollection(
             {
                 "accuracy": MultilabelAccuracy(
-                    num_labels=num_interaction_classes, average="weighted"
+                    num_labels=num_interaction_classes, average=average
                 ),
                 "precision": MultilabelPrecision(
-                    num_labels=num_interaction_classes, average="weighted"
+                    num_labels=num_interaction_classes, average=average
                 ),
                 "recall": MultilabelRecall(
-                    num_labels=num_interaction_classes, average="weighted"
+                    num_labels=num_interaction_classes, average=average
                 ),
                 "f1_score": MultilabelF1Score(
-                    num_labels=num_interaction_classes, average="weighted"
+                    num_labels=num_interaction_classes, average=average
                 ),
             },
             compute_groups=False,
@@ -182,7 +184,9 @@ def _match_prediction_ground_truth(
 ) -> tuple[Annotated[Tensor, "M V", float], Annotated[Tensor, "M V", bool]]:
     num_classes = pred.interaction_labels.shape[1]
 
-    matched = pred.interactions.unsqueeze(1) == ground_truth.interactions  # (I, I', 2)
+    matched = (
+        pred.interaction_indices.unsqueeze(1) == ground_truth.interaction_indices
+    )  # (I, I', 2)
     matched = matched.all(dim=2)  # (I, I')
     matched_pred, matched_target = torch.nonzero(matched, as_tuple=True)
 
@@ -192,7 +196,7 @@ def _match_prediction_ground_truth(
 
     total = len(matched_pred) + len(not_matched_pred) + len(not_matched_target)
     predictions = pred.interaction_labels.new_zeros((total, num_classes))
-    targets = pred.interaction_labels.new_zeros((total, num_classes), dtype=torch.bool)
+    targets = pred.interaction_labels.new_zeros((total, num_classes))
 
     # MATCHED PRED - MATCHED TARGET
     # NOT MATCHED PRED - fake target

@@ -10,7 +10,7 @@ import torch.nn.functional as F  # noqa
 from scipy.optimize import linear_sum_assignment
 from torch import Tensor
 
-from deepsight.models import Criterion as _Criterion
+from deepsight.nn.models import Criterion as _Criterion
 from deepsight.structures import Batch
 from deepsight.tasks.meic import Annotations
 
@@ -20,7 +20,7 @@ from ._structures import HCStep, Output
 class Criterion(_Criterion[Output, Annotations]):
     def __init__(
         self,
-        layers: int | Iterable[int],
+        layer_indices: int | Iterable[int],
         jaccard_weight: float = 1.0,
         similarity_weight: float = 1.0,
         focal_loss_alpha: float = 0.25,
@@ -32,7 +32,7 @@ class Criterion(_Criterion[Output, Annotations]):
         """Initialize a criterion.
 
         Args:
-            layers: The indices of the layers whose outputs should be used to
+            layer_indices: The indices of the layers whose outputs should be used to
                 compute the losses. The name of the losses will be postfixed
                 with the index of the layer they are computed from.
             jaccard_weight: The weight applied to the jaccard index cost. Note that
@@ -47,7 +47,11 @@ class Criterion(_Criterion[Output, Annotations]):
             bce_loss_weight: The weight applied to the binary cross entropy loss.
             hc_loss_weight: The weight applied to the hierarchical clustering loss.
         """
-        self.layers = tuple(layers) if isinstance(layers, Iterable) else (layers,)
+        self.layer_indices = (
+            tuple(layer_indices)
+            if isinstance(layer_indices, Iterable)
+            else (layer_indices,)
+        )
 
         # Weights to compute the cost of associating each predicted multi-entity
         self.jaccard_weight = jaccard_weight
@@ -65,14 +69,20 @@ class Criterion(_Criterion[Output, Annotations]):
     @property
     def losses(self) -> Iterable[str]:
         losses = []
-        for layer in self.layers:
+        for layer_idx in self.layer_indices:
             losses.extend(
-                [f"focal_loss_{layer}", f"bce_loss_{layer}", f"hc_loss_{layer}"]
+                [
+                    f"focal_loss_{layer_idx}",
+                    f"bce_loss_{layer_idx}",
+                    f"hc_loss_{layer_idx}",
+                ]
             )
         return losses
 
     def compute(
-        self, output: Output, annotations: Batch[Annotations]
+        self,
+        output: Output,
+        annotations: Batch[Annotations],
     ) -> dict[str, Tensor]:
         losses = {}
         gt_num_edges = [ann.interactions.shape[1] for ann in annotations]
@@ -80,30 +90,30 @@ class Criterion(_Criterion[Output, Annotations]):
         batched_adj = torch.mm(batched_bm, batched_bm.T)  # (N, N)
         batched_adj.clamp_(max=1)
 
-        for layer in self.layers:
+        for layer_idx in self.layer_indices:
             indices = self._compute_assignment(
-                pred_bbm=output[layer].boundary_matrix,
+                pred_bbm=output[layer_idx].boundary_matrix,
                 gt_bbm=batched_bm,
-                pred_labels=output[layer].interaction_logits,
+                pred_labels=output[layer_idx].interaction_logits,
                 gt_labels=batched_labels,
-                pred_num_edges=output[layer].num_edges,
+                pred_num_edges=output[layer_idx].num_edges,
                 gt_num_edges=gt_num_edges,
             )
             batched_indices = self._batch_indices(
-                indices, output[layer].num_edges, gt_num_edges
+                indices, output[layer_idx].num_edges, gt_num_edges
             )
             bce_indices = self._compute_bce_indices(
-                batched_indices, output[layer].binary_interactions, batched_binary
+                batched_indices, output[layer_idx].binary_interactions, batched_binary
             )
 
-            losses[f"focal_loss_{layer}"] = self._compute_focal_loss(
-                batched_indices, output[layer].interaction_logits, batched_labels
+            losses[f"focal_loss_{layer_idx}"] = self._compute_focal_loss(
+                batched_indices, output[layer_idx].interaction_logits, batched_labels
             )
-            losses[f"bce_loss_{layer}"] = self._compute_bce_loss(
-                bce_indices, output[layer].binary_interaction_logits, batched_binary
+            losses[f"bce_loss_{layer_idx}"] = self._compute_bce_loss(
+                bce_indices, output[layer_idx].binary_interaction_logits, batched_binary
             )
-            losses[f"hc_loss_{layer}"] = self._compute_hc_loss(
-                batched_adj, batched_bm, output[layer].steps
+            losses[f"hc_loss_{layer_idx}"] = self._compute_hc_loss(
+                batched_adj, batched_bm, output[layer_idx].steps
             )
 
         return losses
@@ -196,11 +206,23 @@ class Criterion(_Criterion[Output, Annotations]):
 
     def _compute_bce_indices(
         self,
-        indices: tuple[Tensor, Tensor],
+        indices: tuple[Tensor, Tensor],  # (K,)
         pred_binary: Annotated[Tensor, "E 3", int],
         gt_binary: Annotated[Tensor, "E' 3", int],
     ) -> tuple[Tensor, Tensor]:
-        raise NotImplementedError
+        pred_cluster_indices = pred_binary[:, 2]  # (E,)
+        matched = pred_cluster_indices.unsqueeze(1) == indices[0]  # (E, K)
+        matched_indices = matched.nonzero(as_tuple=True)  # (M,)
+
+        pred_gt_cluster_indices = indices[1][matched_indices[1]]  # (M,)
+        pred_entity_indices = pred_binary[:2][matched_indices[0]]  # (M, 2)
+        pred_binary = torch.cat([pred_entity_indices, pred_gt_cluster_indices], dim=1)
+
+        matched2 = pred_binary.unsqueeze(1) == gt_binary.unsqueeze(0)  # (M, E', 3)
+        matched2 = matched2.all(dim=2)  # (M, E')
+        matched2_indices = matched2.nonzero(as_tuple=True)  # (M',)
+
+        return matched_indices[0][matched2_indices[0]], matched2_indices[1]
 
     def _compute_bce_loss(
         self,

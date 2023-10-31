@@ -5,6 +5,7 @@
 from typing import Annotated
 
 import torch
+import torch.nn.functional as F  # noqa
 import torch.sparse
 from torch import Tensor, nn
 
@@ -170,7 +171,7 @@ class CrossAttention(nn.Module):
 
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
-        self.norm_factor = self.head_dim**-0.5
+        self.attn_dropout = attn_dropout
 
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.kv_proj = nn.Linear(embed_dim, embed_dim * 2, bias=bias)
@@ -180,7 +181,6 @@ class CrossAttention(nn.Module):
             nn.Linear(cpb_hidden_dim, num_heads, bias=bias),
         )
 
-        self.attn_dropout = nn.Dropout(attn_dropout)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.proj_dropout = nn.Dropout(proj_dropout)
 
@@ -193,30 +193,26 @@ class CrossAttention(nn.Module):
         B, Q, K, _ = relative_distances.shape  # noqa
 
         nodes = graph.node_features(BatchMode.STACK)  # (B, Q, D)
-
         q = self.q_proj(nodes)
         q = q.view(B, Q, self.num_heads, self.head_dim).transpose(1, 2)
 
         kv = self.kv_proj(images)
-        kv = kv.view(B, K, self.num_heads, 2 * self.head_dim)
-        kv = kv.transpose(1, 2)  # (B, H, K, 2D)
-        k, v = kv.chunk(2, dim=-1)  # (B, H, K, D)
-
-        # compute attention scores
-        attn_logits = torch.matmul(q, k.transpose(-2, -1))  # (B, H, Q, K)
-        attn_logits = attn_logits * self.norm_factor
+        kv = kv.view(B, K, 2, self.num_heads, self.head_dim)
+        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, K, D)
+        k, v = kv.unbind(dim=0)
 
         # Compute relative continuous position bias
         cpb = self.cpb_mlp(relative_distances)
         cpb = cpb.permute(0, 3, 1, 2)  # (B, H, Q, K)
 
-        attn_logits = attn_logits + cpb
-        attn_scores = torch.softmax(attn_logits, dim=-1)
-        attn_scores = self.attn_dropout(attn_scores)
+        out = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=cpb,
+            dropout_p=self.attn_dropout if self.training else 0.0,
+        )
 
-        # compute output
-        out = torch.matmul(attn_scores, v)  # (B, H, Q, D)
-        out = out.transpose(1, 2).contiguous()  # (B, Q, H, D)
         out = out.view(B, Q, self.num_heads * self.head_dim)
         out = self.out_proj(out)
         out = self.proj_dropout(out)
@@ -261,7 +257,7 @@ class DecoderLayer(nn.Module):
         self.gat = GraphAttention(
             node_dim,
             edge_dim,
-            hidden_dim=node_dim,
+            hidden_dim=node_dim // num_heads,
             num_heads=num_heads,
             attn_dropout=attn_dropout,
             proj_dropout=proj_dropout,
@@ -350,21 +346,23 @@ class Decoder(nn.Module):
         graphs: Graph,
         boxes: BatchedBoundingBoxes,
         images: Annotated[Tensor, "B C H W"],
-    ) -> Graph:
+    ) -> list[Graph]:
         relative_distances = _compute_relative_distances(boxes, images)
         flattened_images = images.flatten(start_dim=2).transpose(1, 2)  # (B, K, D)
 
+        outputs = []
         for layer in self.layers:
             graphs = layer(graphs, flattened_images, relative_distances)
+            outputs.append(graphs)
 
-        return graphs
+        return outputs
 
     def __call__(
         self,
         graphs: Graph,
         boxes: BatchedBoundingBoxes,
         images: Annotated[Tensor, "B C H W"],
-    ) -> Graph:
+    ) -> list[Graph]:
         """Update the node features through the decoder layers."""
         return super().__call__(graphs, boxes, images)
 

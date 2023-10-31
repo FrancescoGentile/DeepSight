@@ -10,7 +10,7 @@ import torch.nn.functional as F  # noqa
 from torch import Tensor, nn
 from torchvision.ops import RoIAlign
 
-from deepsight.models import DeepSightModel
+from deepsight.nn.models import DeepSightModel
 from deepsight.structures import (
     Batch,
     BatchedBoundingBoxes,
@@ -23,7 +23,8 @@ from deepsight.typing import Configurable, JSONPrimitive
 
 from ._decoder import Decoder
 from ._encoder import ViTEncoder
-from ._structures import Output
+from ._structures import LayerOutput, Output
+from ._utils import get_interaction_mask
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class Config:
     """Configuration for the GAHOI model."""
 
     human_class_id: int
+    num_entity_classes: int
     num_interaction_classes: int
     allow_human_human: bool
     encoder: str = "vit_base_patch16_224"
@@ -51,7 +53,24 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # Constructor
     # ----------------------------------------------------------------------- #
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self, config: Config, obj_to_interactions: list[list[int]] | None = None
+    ) -> None:
+        """Initialize the GAHOI model.
+
+        Args:
+            config: The configuration for the model.
+            obj_to_interactions: The lists of interactions for each object class.
+                The number of lists must be equal to the number of entity classes.
+                Each list contains the indices of the interactions in which the
+                corresponding entity can be an object. For example, if
+                `obj_to_interactions[0] = [0, 1]`, then the first object class
+                can participate in the first and second interactions. If provided,
+                this will be used to filter out interactions that an object class
+                cannot participate in (i.e., the probability of the non-valid
+                interactions will be set to zero). If not provided, all interactions
+                will be considered valid for all object classes.
+        """
         super().__init__()
 
         self._config = config
@@ -73,7 +92,16 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         )
 
         classifier_dim = 2 * config.node_dim + config.edge_dim
-        self.classifier = nn.Sequential(
+        self.suppress_classifier = nn.Sequential(
+            nn.LayerNorm(classifier_dim),
+            nn.Linear(
+                in_features=classifier_dim,
+                out_features=1,
+                bias=False,
+            ),
+        )
+
+        self.interaction_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
             nn.Linear(
                 in_features=classifier_dim,
@@ -82,17 +110,30 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
             ),
         )
 
+        # Buffers
+        self.register_buffer(
+            "oi_mask",
+            get_interaction_mask(
+                obj_to_interactions,
+                config.num_entity_classes,
+                config.num_interaction_classes,
+            ),
+        )
+        self.oi_mask: Tensor | None  # for type checking
+
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
 
     def forward(
-        self, samples: Batch[Sample], annotations: Batch[Annotations] | None
+        self,
+        samples: Batch[Sample],
+        annotations: Batch[Annotations] | None,
     ) -> Output:
         # Encoder
         images = self.encoder((sample.image for sample in samples))
         H, W = images.shape[-2:]  # noqa
-        boxes = [s.entities.resize((H, W)).denormalize().to_xyxy() for s in samples]
+        boxes = [s.entity_boxes.resize((H, W)).denormalize().to_xyxy() for s in samples]
 
         coords = [box.coordinates for box in boxes]
         node_features = self.roi_align(images, coords)
@@ -101,58 +142,37 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
 
         # Decoder
         boxes = BatchedBoundingBoxes.batch(boxes)
-        graphs = Graph.batch(
+        batched_graphs = Graph.batch(
             (
                 self._create_interaction_graph(sample, features)
                 for sample, features in zip(samples, node_features, strict=True)
             )
         )
-        edge_features = self.edge_proj(graphs.edge_features())
-        graphs = graphs.replace(edge_features=edge_features)
-        graphs = self.decoder(graphs, boxes, images)
+        edge_features = self.edge_proj(batched_graphs.edge_features())
+        batched_graphs = batched_graphs.replace(edge_features=edge_features)
+        decoder_output = self.decoder(batched_graphs, boxes, images)
 
-        # Classifier
-        edge_features = graphs.edge_features()
-        assert edge_features is not None
-
-        edge_indices = graphs.adjacency_matrix().indices()
-        # keep only the edges where the first node is a human
         entity_labels = torch.cat([sample.entity_labels for sample in samples])
-        keep = entity_labels[edge_indices[0]] == self.human_class_id
-        edge_indices = edge_indices[:, keep]
-
-        first_node = graphs.node_features()[edge_indices[0]]
-        second_node = graphs.node_features()[edge_indices[1]]
-        edge_features = edge_features[keep]
-
-        interaction_features = torch.cat(
-            [first_node, second_node, edge_features], dim=1
-        )
-        interaction_logits = self.classifier(interaction_features)
-
-        # since we removed some edges, we need to update the number of edges
-        keep = keep.split_with_sizes(list(graphs.num_edges(BatchMode.SEQUENCE)))
-        num_edges = [int(torch.sum(k).item()) for k in keep]
-
-        return Output(
-            num_nodes=list(graphs.num_nodes(BatchMode.SEQUENCE)),
-            num_edges=num_edges,
-            interactions=edge_indices.transpose(0, 1),
-            interaction_logits=interaction_logits,
-        )
+        return self._create_output(decoder_output, entity_labels)
 
     def postprocess(self, output: Output) -> Batch[Predictions]:
+        last_layer = output[-1]
+
         predictions = []
         node_offset = 0
 
-        interactions = output.interactions.split_with_sizes(output.num_edges)
-        interaction_logits = F.sigmoid(output.interaction_logits)
-        interaction_labels = interaction_logits.split_with_sizes(output.num_edges)
+        indices = last_layer.indices.split_with_sizes(last_layer.num_edges)
 
-        for idx, num_nodes in enumerate(output.num_nodes):
-            predictions.append(
-                Predictions(interactions[idx] - node_offset, interaction_labels[idx])
-            )
+        suppress = torch.sigmoid(last_layer.suppress_logits)
+        labels = torch.sigmoid(last_layer.label_logits) * suppress
+        if last_layer.interaction_mask is not None:
+            # set the probability of the non-valid interactions to zero
+            labels.masked_fill_(last_layer.interaction_mask, 0.0)
+
+        labels = labels.split_with_sizes(last_layer.num_edges)
+
+        for idx, num_nodes in enumerate(last_layer.num_nodes):
+            predictions.append(Predictions(indices[idx] - node_offset, labels[idx]))
             node_offset += num_nodes
 
         return Batch(predictions)
@@ -191,7 +211,7 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
             size=(node_features.shape[0], node_features.shape[0]),
             is_coalesced=True,
         )
-        edge_features = self._get_edge_features(edges, sample.entities)  # (E, D)
+        edge_features = self._get_edge_features(edges, sample.entity_boxes)  # (E, D)
 
         return Graph(adj_matrix, node_features, edge_features)
 
@@ -232,3 +252,50 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         )
 
         return edge_features
+
+    def _create_output(
+        self,
+        decoder_output: list[Graph],
+        entity_labels: Annotated[Tensor, "N C", int],
+    ) -> Output:
+        graph = decoder_output[-1]
+        edge_indices = graph.adjacency_matrix().indices()
+        keep = entity_labels[edge_indices[0]] == self.human_class_id
+        edge_indices = edge_indices[:, keep]
+        edge_features = graph.edge_features()[keep]  # type: ignore
+
+        num_nodes = list(graph.num_nodes(BatchMode.SEQUENCE))
+        num_edges = [
+            int(torch.sum(k).item())
+            for k in keep.split_with_sizes(list(graph.num_edges(BatchMode.SEQUENCE)))
+        ]
+
+        # filter out interactions that an object class cannot participate in
+        if self.oi_mask is not None:
+            obj_classes = entity_labels[edge_indices[1]]
+            mask = self.oi_mask[obj_classes]
+        else:
+            mask = None
+
+        outputs = []
+        for graph in decoder_output:
+            first_node = graph.node_features()[edge_indices[0]]
+            second_node = graph.node_features()[edge_indices[1]]
+            interaction_features = torch.cat(
+                [first_node, second_node, edge_features], dim=1
+            )
+            label_logits = self.interaction_classifier(interaction_features)
+            suppress_logits = self.suppress_classifier(interaction_features)
+
+            outputs.append(
+                LayerOutput(
+                    num_nodes=num_nodes,
+                    num_edges=num_edges,
+                    indices=edge_indices.transpose(0, 1),
+                    label_logits=label_logits,
+                    suppress_logits=suppress_logits,
+                    interaction_mask=mask,
+                )
+            )
+
+        return outputs

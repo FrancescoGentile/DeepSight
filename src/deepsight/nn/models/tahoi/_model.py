@@ -11,7 +11,7 @@ import torch.nn.functional as F  # noqa
 from torch import Tensor, nn
 from torchvision.ops import RoIAlign
 
-from deepsight.models import DeepSightModel
+from deepsight.nn.models import DeepSightModel
 from deepsight.structures import (
     Batch,
     BatchedBoundingBoxes,
