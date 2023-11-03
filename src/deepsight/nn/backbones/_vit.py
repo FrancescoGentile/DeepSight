@@ -65,6 +65,7 @@ class ViTEncoder(nn.Module):
         self.num_h_patches = math.ceil(image_size[0] / patch_size[0])
         self.num_w_patches = math.ceil(image_size[1] / patch_size[1])
         self.no_class_embedding = no_class_embedding
+        self.embed_dim = embed_dim
 
         self.patch_embed = PatchEmbedding(
             patch_size=patch_size,
@@ -141,6 +142,15 @@ class ViTEncoder(nn.Module):
             del timm_model
 
         return model
+
+    # ----------------------------------------------------------------------- #
+    # Properties
+    # ----------------------------------------------------------------------- #
+
+    @property
+    def output_channels(self) -> int:
+        """The number of output channels."""
+        return self.embed_dim
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -237,7 +247,12 @@ class ViTEncoder(nn.Module):
 
         out = self.pos_dropout(out)
         if sequences is not None:
-            out = sequences.replace(data=out)
+            if self.cls_token is not None:
+                mask = sequences.mask  # (B, hw)
+                mask = torch.cat([torch.ones_like(mask[:, :1]), mask], dim=1)
+                out = BatchedSequences(out, mask=mask)
+            else:
+                out = sequences.replace(data=out)
 
         return out
 

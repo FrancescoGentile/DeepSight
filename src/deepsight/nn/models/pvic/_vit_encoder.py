@@ -59,7 +59,7 @@ class ViTEncoder(nn.Module):
 
     def forward(self, images: Iterable[Image]) -> BatchedImages:
         """Forward pass of the ViT encoder."""
-        images_list = [self.transform(image.to_tensor()) for image in images]
+        images_list = [self.transform(image.data) for image in images]
         features = torch.stack(images_list)
         features: Tensor = self.vit.forward_features(features)
         features = self.proj(features[:, 1:])  # remove the CLS token

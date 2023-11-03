@@ -139,7 +139,11 @@ class CombinatorialComplex:
             indices = torch.cat(indices, dim=1)
             values = torch.cat(values, dim=0)
 
-            boundary_matrices.append(torch.sparse_coo_tensor(indices, values))
+            boundary_matrices.append(
+                torch.sparse_coo_tensor(
+                    indices, values, size=(r_minus_1_cell_offset, r_cell_offset)
+                )
+            )
             boundary_matrices_sizes.append(tuple(bm_sizes))
 
         return cls(cell_features, boundary_matrices, num_cells)
@@ -312,12 +316,12 @@ class CombinatorialComplex:
         if batch_mode == BatchMode.CONCAT:
             return self._boundary_matrices[rank - 1]
 
-        indices = (
+        indices = list(
             self._boundary_matrices[rank - 1]
             .indices()
-            .split_with_sizes(self._boundary_matrices_sizes[rank - 1])
+            .split_with_sizes(self._boundary_matrices_sizes[rank - 1], dim=1)
         )
-        values = (
+        values = list(
             self._boundary_matrices[rank - 1]
             .values()
             .split_with_sizes(self._boundary_matrices_sizes[rank - 1])
@@ -337,12 +341,8 @@ class CombinatorialComplex:
                 indices[idx] = torch.stack(
                     [batch_idx, bm_indices_r_minus_1, bm_indices_r], dim=0
                 )
-            elif batch_mode == BatchMode.SEQUENCE:
-                yield torch.sparse_coo_tensor(
-                    indices=torch.stack([bm_indices_r_minus_1, bm_indices_r], dim=0),
-                    values=values[idx],
-                    size=(r_minus_1_ncells, r_ncells),
-                )
+            else:
+                indices[idx] = torch.stack([bm_indices_r_minus_1, bm_indices_r], dim=0)
 
             r_minus_1_cell_offset += r_minus_1_ncells
             r_cell_offset += r_ncells
@@ -358,6 +358,15 @@ class CombinatorialComplex:
                 values=values,
                 size=(len(self._num_cells[rank]), max_r_minus_1_ncells, max_r_ncells),
             )
+        else:
+            return [
+                torch.sparse_coo_tensor(
+                    indices=indices[idx],
+                    values=values[idx],
+                    size=(self._num_cells[rank - 1][idx], self._num_cells[rank][idx]),
+                )
+                for idx in range(len(indices))
+            ]
 
     @overload
     def coboundary_matrix(
@@ -725,6 +734,6 @@ def _check_tensors(  # noqa
                 f"{boundary_matrix.values().shape[0]}."
             )
 
-    for nc, bm in zip(num_cells, boundary_matrices_sizes, strict=True):
-        if len(nc) != len(bm):
-            raise ValueError("Inconsistent number of batches.")
+    # for nc, bm in zip(num_cells, boundary_matrices_sizes, strict=True):
+    #     if len(nc) != len(bm):
+    #         raise ValueError("Inconsistent number of batches.")

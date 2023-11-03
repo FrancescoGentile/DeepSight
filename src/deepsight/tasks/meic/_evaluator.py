@@ -99,7 +99,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     ) -> None:
         for prediction, target in zip(predictions, ground_truth, strict=True):
             self._compute_meic_metrics(prediction, target)
-            self._compute_hoic_metrics(prediction.interactions, target.interactions)
+            self._compute_hoic_metrics(prediction, target)
 
     def compute_numeric_metrics(self) -> dict[str, float]:
         return {
@@ -156,8 +156,18 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
         )
         self._meic_metrics.update(pred_labels, gt_labels)
 
-    def _compute_hoic_metrics(self, pred: Tensor, target: Tensor) -> None:
-        raise NotImplementedError
+    def _compute_hoic_metrics(self, pred: Predictions, target: Predictions) -> None:
+        pred_indices = pred.binary_interactions  # (E, 2)
+        gt_indices = target.binary_interactions  # (E', 2)
+
+        matched = pred_indices.unsqueeze(1) == gt_indices  #  (E, E', 2)
+        matched = matched.all(dim=2)  # (E, E')
+
+        pred_labels, gt_labels = _match_labels(
+            pred.interaction_labels, target.interaction_labels, matched
+        )
+
+        self._hoic_metrics.update(pred_labels, gt_labels)
 
 
 # --------------------------------------------------------------------------- #

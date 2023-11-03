@@ -2,6 +2,7 @@
 ##
 ##
 
+from numbers import Number
 from pathlib import Path
 from typing import Annotated
 
@@ -20,7 +21,7 @@ class Image(Moveable):
     # Constructor and Factory Methods
     # ----------------------------------------------------------------------- #
 
-    def __init__(self, data: Annotated[Tensor, "C H W", bytes]) -> None:
+    def __init__(self, data: Annotated[Tensor, "3 H W", Number]) -> None:
         self._data = data
 
     @classmethod
@@ -30,6 +31,11 @@ class Image(Moveable):
     # ----------------------------------------------------------------------- #
     # Properties
     # ----------------------------------------------------------------------- #
+
+    @property
+    def data(self) -> Annotated[Tensor, "3 H W", Number]:
+        """The underlying tensor."""
+        return self._data
 
     @property
     def size(self) -> tuple[int, int]:
@@ -47,19 +53,16 @@ class Image(Moveable):
         return self._data.shape[2]
 
     @property
+    def dtype(self) -> torch.dtype:
+        return self._data.dtype
+
+    @property
     def device(self) -> torch.device:
         return self._data.device
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
-
-    def to_tensor(self) -> Annotated[Tensor, "C H W", bytes]:
-        """Return the image as a tensor.
-
-        The tensor is in the format `(C, H, W)` and has dtype `torch.uint8`.
-        """
-        return self._data
 
     def move(self, device: torch.device, non_blocking: bool = False) -> Self:
         if self.device == device:

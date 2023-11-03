@@ -13,6 +13,7 @@ from typing_extensions import NotRequired
 
 from deepsight.structures import BoundingBoxes, BoundingBoxFormat, Image
 from deepsight.tasks import Dataset, Split
+from deepsight.transforms import Transform
 
 from ._structures import Annotations, Predictions, Sample
 
@@ -25,6 +26,7 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
         path: Path | str,
         split: Literal[Split.TRAIN, Split.TEST],
         max_samples: int | None = None,
+        transform: Transform | None = None,
     ) -> None:
         """Initializes a new H2O dataset.
 
@@ -39,18 +41,21 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
                     classes.
                 - `verbs.json`: A JSON file containing the names of the interaction
                     classes.
-            split: The split of the dataset to load. At the moment, only the
-                `train` and `test` splits are supported.
-            max_samples: The maximum number of samples to load. If `None`, all
-                samples are loaded. Must be greater than 0.
+            split: The split of the dataset to load. At the moment, only the `train` and
+                `test` splits are supported.
+            max_samples: The maximum number of samples to load. If `None`, all samples
+                are loaded. Must be greater than 0.
+            transform: An optional transform to apply to the images and bounding boxes.
+                At the moment, only transforms that do not remove entities are
+                supported.
         """
-        super().__init__()
-
         if max_samples is not None and max_samples <= 0:
             raise ValueError("max_samples must be greater than 0.")
 
         self._path = Path(path)
         self._split = split
+        self._transform = transform
+
         self._samples = self._get_samples()
         if max_samples is not None:
             self._samples = self._samples[:max_samples]
@@ -96,7 +101,7 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
         image = Image.open(image_path)
 
         coords = [e["bbox"] for e in file_sample["entities"]]
-        entities = BoundingBoxes(coords, BoundingBoxFormat.XYXY, True, image.size)
+        entity_boxes = BoundingBoxes(coords, BoundingBoxFormat.XYXY, True, image.size)
 
         entity_labels = torch.as_tensor(
             [self._entity_class_to_id[e["category"]] for e in file_sample["entities"]]
@@ -136,7 +141,12 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
             interaction_class_id = self._interaction_class_to_id[action["verb"]]
             interaction_labels[interaction_idx, interaction_class_id] = 1.0
 
-        sample = Sample(image, entities, entity_labels)
+        if self._transform is not None:
+            image, entity_boxes = self._transform(image, entity_boxes)
+            if len(entity_boxes) != len(entity_labels):
+                raise NotImplementedError("Not all entities were kept after transform.")
+
+        sample = Sample(image, entity_boxes, entity_labels)
         annotations = Annotations(interactions, interaction_labels)
         target = Predictions(interactions, interaction_labels)
 
@@ -164,7 +174,7 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
 
 
 # -------------------------------------------------------------------------- #
-# Data
+# Data classes
 # -------------------------------------------------------------------------- #
 
 

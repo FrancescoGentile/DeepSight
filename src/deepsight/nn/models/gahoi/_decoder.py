@@ -9,7 +9,13 @@ import torch.nn.functional as F  # noqa
 import torch.sparse
 from torch import Tensor, nn
 
-from deepsight.structures import BatchedBoundingBoxes, BatchMode, Graph
+from deepsight.structures import (
+    BatchedBoundingBoxes,
+    BatchedImages,
+    BatchedSequences,
+    BatchMode,
+    Graph,
+)
 from deepsight.utils.geometric import scatter_softmax, scatter_sum
 
 
@@ -187,8 +193,8 @@ class CrossAttention(nn.Module):
     def forward(
         self,
         graph: Graph,
-        images: Annotated[Tensor, "B K D"],
-        relative_distances: Annotated[Tensor, "B Q K 2"],
+        images: BatchedSequences,
+        relative_distances: Annotated[Tensor, "B Q P 2"],
     ) -> Graph:
         B, Q, K, _ = relative_distances.shape  # noqa
 
@@ -196,20 +202,23 @@ class CrossAttention(nn.Module):
         q = self.q_proj(nodes)
         q = q.view(B, Q, self.num_heads, self.head_dim).transpose(1, 2)
 
-        kv = self.kv_proj(images)
+        kv = self.kv_proj(images.data)
         kv = kv.view(B, K, 2, self.num_heads, self.head_dim)
-        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, K, D)
+        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, P, D)
         k, v = kv.unbind(dim=0)
 
         # Compute relative continuous position bias
         cpb = self.cpb_mlp(relative_distances)
-        cpb = cpb.permute(0, 3, 1, 2)  # (B, H, Q, K)
+        cpb = cpb.permute(0, 3, 1, 2)  # (B, H, Q, P)
+
+        mask = images.mask[:, None, None]  # (B, 1, 1, P)
+        cpb = cpb.masked_fill(mask, -torch.inf)
 
         out = F.scaled_dot_product_attention(
             q,
             k,
             v,
-            attn_mask=cpb,
+            attn_mask=mask,
             dropout_p=self.attn_dropout if self.training else 0.0,
         )
 
@@ -222,8 +231,8 @@ class CrossAttention(nn.Module):
     def __call__(
         self,
         graph: Graph,
-        images: Annotated[Tensor, "B K D"],
-        relative_distances: Annotated[Tensor, "B Q K 2"],
+        images: BatchedSequences,
+        relative_distances: Annotated[Tensor, "B Q P 2"],
     ) -> Graph:
         """Update the entities features by attending to the images.
 
@@ -284,7 +293,7 @@ class DecoderLayer(nn.Module):
     def forward(
         self,
         graph: Graph,
-        images: Annotated[Tensor, "B K D", float],
+        images: BatchedSequences,
         relative_coords: Annotated[Tensor, "B Q K 2", float],
     ) -> Graph:
         nodes = graph.node_features()
@@ -307,8 +316,8 @@ class DecoderLayer(nn.Module):
     def __call__(
         self,
         graph: Graph,
-        images: Annotated[Tensor, "B K D", float],
-        relative_coords: Annotated[Tensor, "B Q K 2", float],
+        images: BatchedSequences,
+        relative_coords: Annotated[Tensor, "B Q P 2", float],
     ) -> Graph:
         """Update the node features by performing GAT, cross-attention, and FFN."""
         return super().__call__(graph, images, relative_coords)
@@ -345,14 +354,14 @@ class Decoder(nn.Module):
         self,
         graphs: Graph,
         boxes: BatchedBoundingBoxes,
-        images: Annotated[Tensor, "B C H W"],
+        images: BatchedImages,
     ) -> list[Graph]:
         relative_distances = _compute_relative_distances(boxes, images)
-        flattened_images = images.flatten(start_dim=2).transpose(1, 2)  # (B, K, D)
+        patches = images.to_sequences()
 
         outputs = []
         for layer in self.layers:
-            graphs = layer(graphs, flattened_images, relative_distances)
+            graphs = layer(graphs, patches, relative_distances)
             outputs.append(graphs)
 
         return outputs
@@ -361,7 +370,7 @@ class Decoder(nn.Module):
         self,
         graphs: Graph,
         boxes: BatchedBoundingBoxes,
-        images: Annotated[Tensor, "B C H W"],
+        images: BatchedImages,
     ) -> list[Graph]:
         """Update the node features through the decoder layers."""
         return super().__call__(graphs, boxes, images)
@@ -374,18 +383,19 @@ class Decoder(nn.Module):
 
 def _compute_relative_distances(
     boxes: BatchedBoundingBoxes,  # (B, Q, 4)
-    images: Annotated[Tensor, "B C H W"],
+    images: BatchedImages,
 ) -> Annotated[Tensor, "B Q HW 2"]:
-    H, W = images.shape[-2:]  # noqa
-    image_coords = torch.cartesian_prod(
-        torch.arange(W, device=images.device), torch.arange(H, device=images.device)
-    )  # (K, 2)
-    image_coords = image_coords[None, None]  # (1, 1, HW, 2)
+    not_mask = ~images.mask  # (B, H, W)
+    x = not_mask.cumsum(2, dtype=torch.float) - 1  # (B, H, W)
+    y = not_mask.cumsum(1, dtype=torch.float) - 1  # (B, H, W)
 
-    box_coords = boxes.denormalize().to_cxcywh().coordinates[..., :2]  # (B, Q, 2)
-    box_coords = box_coords[:, :, None]  # (B, Q, 1, 2)
+    patch_cx = torch.stack([x, y], dim=3)  # (B, H, W, 2)
+    patch_cx = patch_cx.view(patch_cx.shape[0], -1, 2)  # (B, HW, 2)
 
-    distances = image_coords - box_coords  # (B, Q, HW, 2)
+    box_cx = boxes.denormalize().to_cxcywh().coordinates[..., :2]  # (B, Q, 2)
+    box_cx = box_cx.unsqueeze(2)  # (B, Q, 1, 2)
+
+    distances = patch_cx - box_cx  # (B, Q, HW, 2)
     distances = torch.sign(distances) * torch.log(1 + torch.abs(distances))
 
     return distances

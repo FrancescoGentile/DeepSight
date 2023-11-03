@@ -5,15 +5,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 
 import torch
 from torch import Tensor, nn
 from torch.nn.utils.rnn import pad_sequence
 from torchvision.ops import RoIAlign
 
+from deepsight.nn.backbones import ViTEncoder
 from deepsight.nn.models import DeepSightModel
-from deepsight.structures import Batch, BatchedBoundingBoxes, BatchedSequences
+from deepsight.structures import (
+    Batch,
+    BatchedBoundingBoxes,
+    BatchedImages,
+    BatchedSequences,
+)
 from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configurable, JSONPrimitive
 
@@ -25,7 +31,6 @@ from ._encodings import (
 from ._fusion import MultiModalFusion
 from ._structures import Output
 from ._transformer import TranformerEncoder, TransformerDecoder
-from ._vit_encoder import ViTEncoder
 
 
 @dataclass(frozen=True)
@@ -37,8 +42,9 @@ class Config:
     allow_human_human: bool
     entity_embed_dim: int = 384
     image_embed_dim: int = 256
-    image_encoder: str = "vit_base_patch16_224"
-    image_size: tuple[int, int] = (224, 224)
+    image_encoder_variant: ViTEncoder.Variant = ViTEncoder.Variant.BASE
+    image_encoder_patch_size: Literal[16, 32] = 32
+    image_encoder_size: Literal[224, 384] = 384
     num_heads: int = 8
     dropout: float = 0.1
     temperature: float = 20
@@ -66,9 +72,18 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
         self.image_embed_dim = config.image_embed_dim
         self.temperature = config.temperature
 
-        self.vit_encoder = ViTEncoder(
-            config.image_encoder, config.image_size, config.image_embed_dim
+        self.vit_encoder = ViTEncoder.build(
+            config.image_encoder_variant,
+            config.image_encoder_patch_size,
+            config.image_encoder_size,
         )
+        if self.vit_encoder.output_channels != config.image_embed_dim:
+            self.image_proj = nn.Conv2d(
+                self.vit_encoder.output_channels, config.image_embed_dim, 1
+            )
+        else:
+            self.image_proj = nn.Identity()
+
         self.roi_align = RoIAlign(1, 1.0, -1, True)
 
         self.entity_encoder = TranformerEncoder(
@@ -121,20 +136,26 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
     def forward(
         self, samples: Batch[Sample], annotations: Batch[Annotations] | None
     ) -> Output:
-        images = self.vit_encoder((sample.image for sample in samples))
-        boxes = [
-            s.entity_boxes.resize(img_size).denormalize().to_xyxy()
-            for s, img_size in zip(samples, images.image_sizes, strict=True)
+        images = BatchedImages.batch([sample.image.data for sample in samples])
+        images = self.vit_encoder(images)
+        features = self.image_proj(images.data)
+        images = images.replace(data=features)
+
+        entity_boxes = [
+            sample.entity_boxes.resize(size).denormalize().to_xyxy()
+            for sample, size in zip(samples, images.image_sizes, strict=True)
         ]
-        coords = [box.coordinates for box in boxes]
-        entity_embeddings = self.roi_align(images.data, coords)
+        entity_coords = [box.coordinates for box in entity_boxes]
+        entity_embeddings = self.roi_align(images.data, entity_coords)
         entity_embeddings = entity_embeddings.flatten(1)
-        entity_embeddings = entity_embeddings.split_with_sizes([len(b) for b in boxes])
+        entity_embeddings = entity_embeddings.split_with_sizes(
+            [len(b) for b in entity_boxes]
+        )
 
         entity_embeddings = BatchedSequences.batch(entity_embeddings)  # (B, N, C)
-        boxes = BatchedBoundingBoxes.batch(boxes)
+        entity_boxes = BatchedBoundingBoxes.batch(entity_boxes)
         box_pe, cx_pe = self._create_entity_positional_encodings(
-            entity_embeddings, boxes
+            entity_embeddings, entity_boxes
         )
         entity_embeddings = self.entity_encoder(entity_embeddings, box_pe)  # (B, N, C)
 

@@ -2,6 +2,7 @@
 ##
 ##
 
+from collections.abc import Sequence
 from numbers import Number
 from typing import Annotated
 
@@ -91,7 +92,7 @@ class BatchedImages:
     @classmethod
     def batch(
         cls,
-        images: list[Annotated[Tensor, "C H W", Number]],
+        images: Sequence[Annotated[Tensor, "C H W", Number]],
         padding_value: int | float = 0,
     ) -> Self:
         """Batch a list of images into a single tensor.
@@ -105,7 +106,7 @@ class BatchedImages:
         """
         _check_images(images)
 
-        image_sizes = tuple(tuple(image.shape[1:]) for image in images)
+        image_sizes = tuple((img.size(1), img.size(2)) for img in images)
         max_height = max(s[0] for s in image_sizes)
         max_width = max(s[1] for s in image_sizes)
 
@@ -119,7 +120,7 @@ class BatchedImages:
         for i, image in enumerate(images):
             data[i, :, : image.shape[1], : image.shape[2]].copy_(image)
 
-        return cls(data, image_sizes=image_sizes, check=False)  # type: ignore
+        return cls(data, image_sizes=image_sizes, check_validity=False)
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -290,7 +291,7 @@ def _compute_mask_from_sizes(
     return mask
 
 
-def _check_images(images: list[Tensor]) -> None:
+def _check_images(images: Sequence[Tensor]) -> None:
     """Check that the images are valid.
 
     Args:

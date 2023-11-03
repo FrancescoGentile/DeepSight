@@ -3,17 +3,19 @@
 ##
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 
 import torch
 import torch.nn.functional as F  # noqa
 from torch import Tensor, nn
 from torchvision.ops import RoIAlign
 
+from deepsight.nn.backbones import ViTEncoder
 from deepsight.nn.models import DeepSightModel
 from deepsight.structures import (
     Batch,
     BatchedBoundingBoxes,
+    BatchedImages,
     BatchMode,
     BoundingBoxes,
     Graph,
@@ -22,7 +24,6 @@ from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configurable, JSONPrimitive
 
 from ._decoder import Decoder
-from ._encoder import ViTEncoder
 from ._structures import LayerOutput, Output
 from ._utils import get_interaction_mask
 
@@ -35,8 +36,9 @@ class Config:
     num_entity_classes: int
     num_interaction_classes: int
     allow_human_human: bool
-    encoder: str = "vit_base_patch16_224"
-    image_size: tuple[int, int] = (224, 224)
+    encoder_variant: ViTEncoder.Variant = ViTEncoder.Variant.BASE
+    encoder_patch_size: Literal[16, 32] = 32
+    encoder_image_size: Literal[224, 384] = 384
     num_decoder_layers: int = 6
     node_dim: int = 256
     edge_dim: int = 256
@@ -78,7 +80,14 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         self.allow_human_human = config.allow_human_human
 
         # Parameters
-        self.encoder = ViTEncoder(config.encoder, config.image_size, config.node_dim)
+        self.encoder = ViTEncoder.build(
+            config.encoder_variant, config.encoder_patch_size, config.encoder_image_size
+        )
+        if self.encoder.output_channels != config.node_dim:
+            self.proj = nn.Conv2d(self.encoder.output_channels, config.node_dim, 1)
+        else:
+            self.proj = nn.Identity()
+
         self.roi_align = RoIAlign(1, 1.0, -1, True)
         self.edge_proj = nn.Linear(36, config.edge_dim)
         self.decoder = Decoder(
@@ -131,17 +140,24 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         annotations: Batch[Annotations] | None,
     ) -> Output:
         # Encoder
-        images = self.encoder((sample.image for sample in samples))
-        H, W = images.shape[-2:]  # noqa
-        boxes = [s.entity_boxes.resize((H, W)).denormalize().to_xyxy() for s in samples]
+        images = BatchedImages.batch([sample.image.data for sample in samples])
+        images = self.encoder(images)
+        features = self.proj(images.data)
+        images = images.replace(data=features)
 
-        coords = [box.coordinates for box in boxes]
-        node_features = self.roi_align(images, coords)
+        entity_boxes = [
+            sample.entity_boxes.resize(size).denormalize().to_xyxy()
+            for sample, size in zip(samples, images.image_sizes, strict=True)
+        ]
+        entity_coords = [box.coordinates for box in entity_boxes]
+        node_features = self.roi_align(images, entity_coords)
         node_features = node_features.flatten(1)  # (N, C)
-        node_features = node_features.split_with_sizes([len(box) for box in boxes])
+        node_features = node_features.split_with_sizes(
+            [len(box) for box in entity_boxes]
+        )
 
         # Decoder
-        boxes = BatchedBoundingBoxes.batch(boxes)
+        boxes = BatchedBoundingBoxes.batch(entity_boxes)
         batched_graphs = Graph.batch(
             (
                 self._create_interaction_graph(sample, features)

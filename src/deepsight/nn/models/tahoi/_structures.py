@@ -21,6 +21,7 @@ class LayerOutput:
     steps: list[HCStep]
     num_nodes: list[int]
     num_edges: list[int]
+    num_binary_edges: list[int]
     boundary_matrix: Annotated[Tensor, "N H", bool, torch.sparse_coo]
     interaction_logits: Annotated[Tensor, "H C", float]
     binary_interactions: Annotated[Tensor, "E 3", int]

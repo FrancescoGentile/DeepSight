@@ -10,7 +10,13 @@ import torch
 import torch.nn.functional as F  # noqa
 from torch import Tensor, nn
 
-from deepsight.structures import BatchedBoundingBoxes, BatchMode, CombinatorialComplex
+from deepsight.structures import (
+    BatchedBoundingBoxes,
+    BatchedImages,
+    BatchedSequences,
+    BatchMode,
+    CombinatorialComplex,
+)
 from deepsight.utils.geometric import (
     add_remaining_self_loops,
     coalesce,
@@ -79,7 +85,11 @@ class IntraRankAttention(nn.Module):
         # nodes belong.
         inter_neighborhood = inter_neighborhood.to_dense()
         # (N, N, M), [i, j, k] = 1 if cells i and j are both bound to bridge cell k
-        shared_bridges = inter_neighborhood.unsqueeze(1).logical_and(inter_neighborhood)
+        shared_bridges = (
+            inter_neighborhood.unsqueeze(1)
+            .expand(-1, inter_neighborhood.shape[0], -1)
+            .logical_and(inter_neighborhood)
+        )
         shared_bridges_indices = shared_bridges.nonzero(as_tuple=False)  # (K, 3)
         shared_bridges_indices = shared_bridges_indices.T  # (3, K)
 
@@ -103,6 +113,7 @@ class IntraRankAttention(nn.Module):
             size=cell_features.shape[0],
             fill_value=0.0,  # type: ignore
         )
+
         source_cells = cell_features[indices[0]]
         target_cells = cell_features[indices[1]]
 
@@ -287,7 +298,7 @@ class HyperGraphAttention(nn.Module):
 
     def forward(self, ccc: CombinatorialComplex) -> CombinatorialComplex:
         bm = ccc.boundary_matrix(1)  # (N, E)
-        cbm = ccc.coboundary_matrix(1)  # (E, N)
+        cbm = ccc.coboundary_matrix(1).coalesce()  # (E, N)
         nodes = ccc.cell_features(0)  # (N, D)
         edges = ccc.cell_features(1)  # (E, D)
 
@@ -297,8 +308,8 @@ class HyperGraphAttention(nn.Module):
         edge_to_node = self.edge_to_node_attn(edges, nodes, bm)
         edge_to_edge = self.edge_to_edge_attn(edges, nodes, cbm)
 
-        nodes = node_to_edge + node_to_node
-        edges = edge_to_node + edge_to_edge
+        nodes = node_to_node + edge_to_node
+        edges = edge_to_edge + node_to_edge
 
         return ccc.replace((nodes, 0), (edges, 1))
 
@@ -322,7 +333,6 @@ class HyperGraphStructureLearning(nn.Module):
         attn_dropout: float = 0.0,
         proj_dropout: float = 0.0,
         similarity_threshold: float = 0.0,
-        use_edge_to_node_attn: bool = True,
     ) -> None:
         super().__init__()
 
@@ -331,6 +341,11 @@ class HyperGraphStructureLearning(nn.Module):
                 f"similarity_threshold ({similarity_threshold}) must be in the "
                 f"range [-1, 1]."
             )
+
+        self.similarity_threshold = similarity_threshold
+
+        self.node_layernorm = nn.LayerNorm(embed_dim)
+        self.edge_layernorm = nn.LayerNorm(embed_dim)
 
         self.node_to_node_attn = IntraRankAttention(
             embed_dim,
@@ -341,38 +356,37 @@ class HyperGraphStructureLearning(nn.Module):
             proj_dropout=proj_dropout,
         )
 
-        if use_edge_to_node_attn:
-            self.edge_to_node_attn = InterRankAttention(
-                embed_dim,
-                hidden_dim=hidden_dim,
-                num_heads=num_heads,
-                bias=bias,
-                attn_dropout=attn_dropout,
-                proj_dropout=proj_dropout,
-            )
-        else:
-            self.edge_to_node_attn = None
-
-        self.similarity_threshold = similarity_threshold
+        self.edge_to_node_attn = InterRankAttention(
+            embed_dim,
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            bias=bias,
+            attn_dropout=attn_dropout,
+            proj_dropout=proj_dropout,
+        )
+        self.node_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_edge_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
     def forward(
         self, ccc: CombinatorialComplex
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
+        nodes_norm = self.node_layernorm(ccc.cell_features(0))
+        edges_norm = self.edge_layernorm(ccc.cell_features(1))
+
         node_to_node = self.node_to_node_attn(
-            cell_features=ccc.cell_features(0),
-            bridge_cell_features=ccc.cell_features(1),
+            cell_features=nodes_norm,
+            bridge_cell_features=edges_norm,
             inter_neighborhood=ccc.boundary_matrix(1),
         )
 
-        if self.edge_to_node_attn is not None:
-            edge_to_node = self.edge_to_node_attn(
-                source_features=ccc.cell_features(1),
-                target_features=ccc.cell_features(0),
-                inter_neighborhood=ccc.coboundary_matrix(1),
-            )
-            nodes = node_to_node + edge_to_node  # (N, D)
-        else:
-            nodes = node_to_node  # (N, D)
+        edge_to_node = self.edge_to_node_attn(
+            source_features=edges_norm,
+            target_features=nodes_norm,
+            inter_neighborhood=ccc.boundary_matrix(1),
+        )
+
+        nodes = node_to_node + edge_to_node  # (N, D)
+        nodes = self.node_proj(nodes)  # (N, D)
 
         num_nodes = tuple(ccc.num_cells(0, BatchMode.SEQUENCE))
         coboundary_matrix, hc_output = self._create_coboundary_matrix(nodes, num_nodes)
@@ -384,6 +398,7 @@ class HyperGraphStructureLearning(nn.Module):
         edge_degree = coboundary_matrix.sum(-1, keepdim=True)  # (M, 1)
         edges = torch.mm(coboundary_matrix.to(nodes.dtype), nodes)  # (M, D)
         edges = edges / edge_degree
+        edges = self.out_edge_proj(edges)
 
         coboundary_matrix = coboundary_matrix.bool()
         edge_indices = (
@@ -440,7 +455,7 @@ class HyperGraphStructureLearning(nn.Module):
             node_limit = node_offset + num_nodes
             mask[node_offset:node_limit, node_offset:node_limit] = False
             node_offset = node_limit
-        mask_int = mask.int()
+        mask_float = mask.float()
 
         similarity = nodes.mm(nodes.T)
         # We set the diagonal and the lower triangular part of the similarity matrix to
@@ -452,11 +467,13 @@ class HyperGraphStructureLearning(nn.Module):
         merge_indices = merge.nonzero(as_tuple=False)
 
         coboundary_matrix = torch.zeros(
-            (len(merge_indices), nodes.shape[0]), dtype=torch.int, device=nodes.device
+            (len(merge_indices), nodes.shape[0]),
+            dtype=torch.float,
+            device=nodes.device,
         )
         cluster_indices = torch.arange(len(merge_indices), device=nodes.device)
-        coboundary_matrix[cluster_indices, merge_indices[:, 0]] = 1
-        coboundary_matrix[cluster_indices, merge_indices[:, 1]] = 1
+        coboundary_matrix[cluster_indices, merge_indices[:, 0]] = 1.0
+        coboundary_matrix[cluster_indices, merge_indices[:, 1]] = 1.0
 
         if len(merge_indices) == 0:
             step = HCStep(similarity, mask, None)
@@ -467,12 +484,12 @@ class HyperGraphStructureLearning(nn.Module):
         hc_output.append(step)
 
         while True:
-            clusters = coboundary_matrix.to(nodes.dtype).mm(nodes)  # (M, D)
+            clusters = coboundary_matrix.mm(nodes)  # (M, D)
             clusters_dim = coboundary_matrix.sum(-1, keepdim=True)  # (M, 1)
             clusters = clusters / clusters_dim
 
             clusters_mask = (
-                coboundary_matrix.mm(mask_int).mm(coboundary_matrix.T).bool()
+                coboundary_matrix.mm(mask_float).mm(coboundary_matrix.T).bool()
             )  # (M, M)
             mask_indices = torch.tril_indices(*clusters_mask.shape)
             clusters_mask[mask_indices[0], mask_indices[1]] = True
@@ -489,15 +506,15 @@ class HyperGraphStructureLearning(nn.Module):
 
             cbm = torch.zeros(
                 (len(merge_indices), coboundary_matrix.shape[0]),
-                dtype=torch.int,
+                dtype=torch.float,
                 device=nodes.device,
             )  # (M', M)
             cluster_indices = torch.arange(len(merge_indices), device=nodes.device)
-            cbm[cluster_indices, merge_indices[:, 0]] = 1
-            cbm[cluster_indices, merge_indices[:, 1]] = 1
+            cbm[cluster_indices, merge_indices[:, 0]] = 1.0
+            cbm[cluster_indices, merge_indices[:, 1]] = 1.0
 
             cbm = cbm.mm(coboundary_matrix)  # (M', N)
-            cbm.clamp_(max=1)
+            cbm.clamp_(max=1.0)
 
             # If there are some clusters from the previous iteration that have not been
             # merged into any other cluster, we need to keep them in the coboundary
@@ -561,18 +578,17 @@ class CrossAttention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.norm_factor = self.head_dim**-0.5
+        self.attn_dropout = attn_dropout
 
         self.nq_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.eq_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.kv_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.kv_proj = nn.Linear(embed_dim, 2 * embed_dim, bias=bias)
 
         self.cpb_mlp = nn.Sequential(
             nn.Linear(2, cpb_hidden_dim, bias=False),
             nn.ReLU(),
             nn.Linear(cpb_hidden_dim, num_heads, bias=False),
         )
-
-        self.attn_dropout = nn.Dropout(attn_dropout)
 
         self.nout_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.eout_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
@@ -581,42 +597,45 @@ class CrossAttention(nn.Module):
     def forward(
         self,
         ccc: CombinatorialComplex,
-        images: Annotated[Tensor, "B L D"],
-        relative_distances: Annotated[Tensor, "B N L 2"],
+        images: BatchedSequences,
+        relative_distances: Annotated[Tensor, "B N P 2"],
     ) -> CombinatorialComplex:
-        B, N, L, _ = images.shape  # noqa
+        B, N, P, _ = relative_distances.shape  # noqa: N806
 
-        node_cpb = self.cpb_mlp(relative_distances)  # (B, N, L, H)
-        node_cpb = node_cpb.permute(0, 3, 1, 2)  # (B, H, N, L)
+        node_cpb: Tensor = self.cpb_mlp(relative_distances)  # (B, N, P, H)
+        node_cpb = node_cpb.permute(0, 3, 1, 2)  # (B, H, N, P)
         cbm = ccc.coboundary_matrix(1, BatchMode.STACK)  # (B, E, N)
-        edge_cpb = torch.bmm(cbm[:, None].to(node_cpb.dtype), node_cpb)  # (B, H, E, L)
+        cbm = cbm.to_dense().unsqueeze(1)  # (B, 1, E, N)
+        edge_cpb = torch.matmul(cbm.to(node_cpb.dtype), node_cpb)  # (B, H, E, P)
 
         nq = self.nq_proj(ccc.cell_features(0, BatchMode.STACK))
         nq = nq.view(B, N, self.num_heads, self.head_dim).transpose(1, 2)
         eq = self.eq_proj(ccc.cell_features(1, BatchMode.STACK))
         eq = eq.view(B, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
-        kv = self.kv_proj(images)  # (B, L, D)
-        kv = kv.view(B, L, self.num_heads, 2 * self.head_dim)
-        kv = kv.transpose(1, 2)  # (B, H, L, 2D)
-        k, v = kv.chunk(2, dim=-1)  # (B, H, L, D)
+        kv = self.kv_proj(images.data)  # (B, P, 2D)
+        kv = kv.view(B, P, 2, self.num_heads, self.head_dim)
+        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, P, Dh)
+        k, v = kv.unbind(0)  # (B, H, P, Dh)
 
-        node_attn_logits = (nq @ k.transpose(-1, -2)) * self.norm_factor
-        node_attn_logits = node_attn_logits + node_cpb
-        node_attn_scores = node_attn_logits.softmax(dim=-1)
-        node_attn_scores = self.attn_dropout(node_attn_scores)
+        mask = images.mask[:, None, None]  # (B, 1, 1, P)
+        node_attn_mask = node_cpb.masked_fill_(mask, -torch.inf)
+        edge_attn_mask = edge_cpb.masked_fill_(mask, -torch.inf)
 
-        edge_attn_logits = (eq @ k.transpose(-1, -2)) * self.norm_factor
-        edge_attn_logits = edge_attn_logits + edge_cpb
-        edge_attn_scores = edge_attn_logits.softmax(dim=-1)
-        edge_attn_scores = self.attn_dropout(edge_attn_scores)
+        node_out = F.scaled_dot_product_attention(
+            nq, k, v, node_attn_mask, self.attn_dropout if self.training else 0.0
+        )  # (B, H, N, Dh)
 
-        node_out = (node_attn_scores @ v).transpose(1, 2)  # (B, N, H, Dh)
+        edge_out = F.scaled_dot_product_attention(
+            eq, k, v, edge_attn_mask, self.attn_dropout if self.training else 0.0
+        )  # (B, H, E, Dh)
+
+        node_out = node_out.transpose(1, 2)  # (B, N, H, Dh)
         node_out = node_out.flatten(2)  # (B, N, D)
         node_out = self.nout_proj(node_out)
         node_out = self.out_dropout(node_out)
 
-        edge_out = (edge_attn_scores @ v).transpose(1, 2)  # (B, E, H, Dh)
+        edge_out = edge_out.transpose(1, 2)  # (B, E, H, Dh)
         edge_out = edge_out.flatten(2)
         edge_out = self.eout_proj(edge_out)
         edge_out = self.out_dropout(edge_out)
@@ -626,7 +645,7 @@ class CrossAttention(nn.Module):
     def __call__(
         self,
         ccc: CombinatorialComplex,
-        images: Annotated[Tensor, "B L D"],
+        images: BatchedSequences,
         relative_distances: Annotated[Tensor, "B N L 2"],
     ) -> CombinatorialComplex:
         return super().__call__(ccc, images, relative_distances)
@@ -642,12 +661,9 @@ class DecoderLayer(nn.Module):
         attn_dropout: float = 0.0,
         proj_dropout: float = 0.0,
         similarity_threshold: float = 0.0,
-        use_edge_to_node_attn: bool = True,
     ) -> None:
         super().__init__()
 
-        self.node_layernorm1 = nn.LayerNorm(embed_dim)
-        self.edge_layernorm1 = nn.LayerNorm(embed_dim)
         self.structure_learning = HyperGraphStructureLearning(
             embed_dim,
             num_heads=num_heads,
@@ -655,8 +671,10 @@ class DecoderLayer(nn.Module):
             attn_dropout=attn_dropout,
             proj_dropout=proj_dropout,
             similarity_threshold=similarity_threshold,
-            use_edge_to_node_attn=use_edge_to_node_attn,
         )
+
+        self.hgat_node_layernorm = nn.LayerNorm(embed_dim)
+        self.hgat_edge_layernorm = nn.LayerNorm(embed_dim)
         self.hgat = HyperGraphAttention(
             embed_dim,
             num_heads=num_heads,
@@ -665,8 +683,8 @@ class DecoderLayer(nn.Module):
             proj_dropout=proj_dropout,
         )
 
-        self.node_layernorm2 = nn.LayerNorm(embed_dim)
-        self.edge_layernorm2 = nn.LayerNorm(embed_dim)
+        self.ca_node_layernorm = nn.LayerNorm(embed_dim)
+        self.ca_edge_layernorm = nn.LayerNorm(embed_dim)
         self.cross_attn = CrossAttention(
             embed_dim,
             cpb_hidden_dim=cpb_hidden_dim,
@@ -676,8 +694,8 @@ class DecoderLayer(nn.Module):
             proj_dropout=proj_dropout,
         )
 
-        self.node_layernorm3 = nn.LayerNorm(embed_dim)
-        self.edge_layernorm3 = nn.LayerNorm(embed_dim)
+        self.ffn_node_layernorm = nn.LayerNorm(embed_dim)
+        self.ffn_edge_layernorm = nn.LayerNorm(embed_dim)
         self.node_ffn = nn.Sequential(
             nn.Linear(embed_dim, embed_dim * 4, bias=bias),
             nn.GELU(),
@@ -694,30 +712,32 @@ class DecoderLayer(nn.Module):
     def forward(
         self,
         ccc: CombinatorialComplex,
-        images: Annotated[Tensor, "B L D"],
+        images: BatchedSequences,
         relative_distances: Annotated[Tensor, "B N L 2"],
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
-        # Structure learning and HGAT
-        nodes, edges = ccc.cell_features(0), ccc.cell_features(1)
-        nodes_norm = self.node_layernorm1(nodes)
-        edges_norm = self.edge_layernorm1(edges)
-        ccc = ccc.replace((nodes_norm, 0), (edges_norm, 1))
+        # Structure learning
         ccc, hc_output = self.structure_learning(ccc)
+        nodes, edges = ccc.cell_features(0), ccc.cell_features(1)
+
+        # Hypergraph attention
+        nodes_norm = self.hgat_node_layernorm(nodes)
+        edges_norm = self.hgat_edge_layernorm(edges)
+        ccc = ccc.replace((nodes_norm, 0), (edges_norm, 1))
         ccc = self.hgat(ccc)
         nodes = ccc.cell_features(0) + nodes
         edges = ccc.cell_features(1) + edges
 
         # Cross-attention
-        nodes_norm = self.node_layernorm2(nodes)
-        edges_norm = self.edge_layernorm2(edges)
+        nodes_norm = self.ca_node_layernorm(nodes)
+        edges_norm = self.ca_edge_layernorm(edges)
         ccc = ccc.replace((nodes_norm, 0), (edges_norm, 1))
         ccc = self.cross_attn(ccc, images, relative_distances)
         nodes = ccc.cell_features(0) + nodes
         edges = ccc.cell_features(1) + edges
 
         # FFN
-        nodes_norm = self.node_layernorm3(nodes)
-        edges_norm = self.edge_layernorm3(edges)
+        nodes_norm = self.ffn_node_layernorm(nodes)
+        edges_norm = self.ffn_edge_layernorm(edges)
         nodes = self.node_ffn(nodes_norm) + nodes
         edges = self.edge_ffn(edges_norm) + edges
 
@@ -727,7 +747,7 @@ class DecoderLayer(nn.Module):
     def __call__(
         self,
         ccc: CombinatorialComplex,
-        images: Annotated[Tensor, "B L D"],
+        images: BatchedSequences,
         relative_distances: Annotated[Tensor, "B N L 2"],
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
         return super().__call__(ccc, images, relative_distances)
@@ -767,9 +787,8 @@ class Decoder(nn.Module):
                     attn_dropout=attn_dropout,
                     proj_dropout=proj_dropout,
                     similarity_threshold=threshold,
-                    use_edge_to_node_attn=idx > 0,
                 )
-                for idx, threshold in enumerate(similarity_thresholds)
+                for threshold in similarity_thresholds
             ]
         )
 
@@ -777,14 +796,14 @@ class Decoder(nn.Module):
         self,
         ccc: CombinatorialComplex,
         boxes: BatchedBoundingBoxes,
-        images: Annotated[Tensor, "B C H W"],
+        images: BatchedImages,
     ) -> list[tuple[CombinatorialComplex, list[HCStep]]]:
         relative_distances = _compute_relative_distances(boxes, images)
-        images = images.flatten(2).transpose(1, 2)  # (B, HW, C)
+        patches = images.to_sequences()
 
         outputs = []
         for layer in self.layers:
-            ccc, hc_output = layer(ccc, images, relative_distances)
+            ccc, hc_output = layer(ccc, patches, relative_distances)
             outputs.append((ccc, hc_output))
 
         return outputs
@@ -793,7 +812,7 @@ class Decoder(nn.Module):
         self,
         ccc: CombinatorialComplex,
         boxes: BatchedBoundingBoxes,
-        images: Annotated[Tensor, "B C H W"],
+        images: BatchedImages,
     ) -> list[tuple[CombinatorialComplex, list[HCStep]]]:
         return super().__call__(ccc, boxes, images)
 
@@ -805,18 +824,19 @@ class Decoder(nn.Module):
 
 def _compute_relative_distances(
     boxes: BatchedBoundingBoxes,  # (B, Q, 4)
-    images: Annotated[Tensor, "B C H W"],
+    images: BatchedImages,
 ) -> Annotated[Tensor, "B Q HW 2"]:
-    H, W = images.shape[-2:]  # noqa
-    image_coords = torch.cartesian_prod(
-        torch.arange(W, device=images.device), torch.arange(H, device=images.device)
-    )  # (K, 2)
-    image_coords = image_coords[None, None]  # (1, 1, HW, 2)
+    not_mask = ~images.mask  # (B, H, W)
+    x = not_mask.cumsum(2, dtype=torch.float) - 1  # (B, H, W)
+    y = not_mask.cumsum(1, dtype=torch.float) - 1  # (B, H, W)
 
-    box_coords = boxes.denormalize().to_cxcywh().coordinates[..., :2]  # (B, Q, 2)
-    box_coords = box_coords[:, :, None]  # (B, Q, 1, 2)
+    patch_cx = torch.stack([x, y], dim=3)  # (B, H, W, 2)
+    patch_cx = patch_cx.view(patch_cx.shape[0], -1, 2)  # (B, HW, 2)
 
-    distances = image_coords - box_coords  # (B, Q, HW, 2)
+    box_cx = boxes.denormalize().to_cxcywh().coordinates[..., :2]  # (B, Q, 2)
+    box_cx = box_cx.unsqueeze(2)  # (B, Q, 1, 2)
+
+    distances = patch_cx - box_cx  # (B, Q, HW, 2)
     distances = torch.sign(distances) * torch.log(1 + torch.abs(distances))
 
     return distances

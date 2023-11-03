@@ -4,27 +4,28 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 
 import torch
-import torch.nn.functional as F  # noqa
 from torch import Tensor, nn
 from torchvision.ops import RoIAlign
 
+from deepsight.nn.backbones import ViTEncoder
 from deepsight.nn.models import DeepSightModel
 from deepsight.structures import (
     Batch,
     BatchedBoundingBoxes,
+    BatchedImages,
     BatchMode,
     BoundingBoxes,
     CombinatorialComplex,
 )
 from deepsight.tasks.meic import Annotations, Predictions, Sample
 from deepsight.typing import Configurable, JSONPrimitive
+from deepsight.utils.geometric import coalesce
 
 from ._decoder import Decoder
-from ._encoder import ViTEncoder
-from ._structures import LayerOutput, Output
+from ._structures import HCStep, LayerOutput, Output
 
 
 @dataclass(frozen=True)
@@ -33,8 +34,9 @@ class Config:
 
     human_class_id: int
     num_interaction_classes: int
-    encoder: str = "vit_base_patch16_224"
-    image_size: tuple[int, int] = (224, 224)
+    encoder_variant: ViTEncoder.Variant = ViTEncoder.Variant.BASE
+    encoder_patch_size: Literal[16, 32] = 16
+    encoder_image_size: Literal[224, 384] = 384
     embed_dim: int = 256
     cpb_hidden_dim: int = 256
     num_heads: int = 8
@@ -57,11 +59,17 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         self._config = config
         self.human_class_id = config.human_class_id
 
-        self.encoder = ViTEncoder(config.encoder, config.image_size, config.embed_dim)
+        self.encoder = ViTEncoder.build(
+            config.encoder_variant, config.encoder_patch_size, config.encoder_image_size
+        )
+        if self.encoder.output_channels != config.embed_dim:
+            self.proj = nn.Conv2d(self.encoder.output_channels, config.embed_dim, 1)
+        else:
+            self.proj = nn.Identity()
+
         self.roi_align = RoIAlign(
             output_size=1, spatial_scale=1.0, sampling_ratio=-1, aligned=True
         )
-        self.edge_proj = nn.Linear(36, config.embed_dim)
 
         self.decoder = Decoder(
             embed_dim=config.embed_dim,
@@ -88,70 +96,62 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # ----------------------------------------------------------------------- #
 
     def forward(
-        self, samples: Batch[Sample], annotations: Batch[Annotations] | None
+        self,
+        samples: Batch[Sample],
+        annotations: Batch[Annotations] | None,
     ) -> Output:
-        images = self.encoder((sample.image for sample in samples))
-        H, W = images.shape[-2:]  # noqa
-        boxes = [
-            sample.entities.resize((H, W)).denormalize().to_xyxy() for sample in samples
-        ]
+        images = BatchedImages.batch([sample.image.data for sample in samples])
+        images = self.encoder(images)
+        features = self.proj(images.data)
+        images = images.replace(data=features)
 
-        coords = [box.coordinates for box in boxes]
-        node_features = self.roi_align(images, coords)
-        node_features = node_features.flatten(1)  # (N, C)
-        node_features = node_features.split_with_sizes([len(box) for box in boxes])
-
-        interaction_graphs = [
-            self._create_interaction_graph(sample, features)
-            for sample, features in zip(samples, node_features, strict=True)
-        ]
-        ccc = CombinatorialComplex.batch(interaction_graphs)
-        edges = self.edge_proj(ccc.cell_features(1))
-        ccc = ccc.replace((edges, 1))
-
-        bboxes = BatchedBoundingBoxes.batch(boxes)
-
-        layer_outputs = self.decoder(ccc, bboxes, images)
+        ccc, entity_boxes = self._create_decoder_input(samples, images)
+        layer_outputs = self.decoder(ccc, entity_boxes, images)
 
         entity_labels = torch.cat([sample.entity_labels for sample in samples])
-        output = []
-
-        for ccc, hc_output in layer_outputs:
-            bm = ccc.boundary_matrix(1)  # (N, H)
-            interaction_logits = self.mei_classifier(ccc.cell_features(1))
-
-            binary_interactions = bm.unsqueeze(1).logical_and(bm)  # (N, N, H)
-            binary_interactions = binary_interactions.nonzero(as_tuple=False)
-
-            # remove binary interactions where the first entity is not human
-            mask = entity_labels[binary_interactions[:, 0]] == self.human_class_id
-            binary_interactions = binary_interactions[mask]
-
-            # remove self interactions
-            mask = binary_interactions[:, 0] != binary_interactions[:, 1]
-            binary_interactions = binary_interactions[mask]
-
-            nodes1 = ccc.cell_features(0)[binary_interactions[:, 0]]
-            nodes2 = ccc.cell_features(0)[binary_interactions[:, 1]]
-            edge = ccc.cell_features(1)[binary_interactions[:, 2]]
-            binary = torch.cat([nodes1, nodes2, edge], dim=1)  # (E, 3C)
-            binary_logits = self.binary_classifier(binary).squeeze(1)  # (E,)
-
-            output.append(
-                LayerOutput(
-                    steps=hc_output,
-                    num_nodes=list(ccc.num_cells(0, BatchMode.SEQUENCE)),
-                    num_edges=list(ccc.num_cells(1, BatchMode.SEQUENCE)),
-                    boundary_matrix=bm,
-                    interaction_logits=interaction_logits,
-                    binary_interactions=binary_interactions,
-                    binary_interaction_logits=binary_logits,
-                )
-            )
+        output = self._create_output(layer_outputs, entity_labels)
 
         return output
 
-    def postprocess(self, output: Output) -> Batch[Predictions]: ...
+    def postprocess(self, output: Output) -> Batch[Predictions]:
+        num_nodes = output[-1].num_nodes
+        num_edges = output[-1].num_edges
+        num_binary_edges = output[-1].num_binary_edges
+        logits = output[-1].interaction_logits
+        binary_logits = output[-1].binary_interaction_logits
+        bbm = output[-1].boundary_matrix.to_dense()
+        binary_interactions = output[-1].binary_interactions
+
+        labels = torch.sigmoid(logits)
+        binary_labels = labels[output[-1].binary_interactions[:, 2]]
+        binary_labels = torch.sigmoid(binary_logits) * binary_labels
+
+        labels = labels.split_with_sizes(num_edges)
+        binary_labels = binary_labels.split_with_sizes(num_binary_edges)
+
+        predictions: list[Predictions] = []
+        node_offset, edge_offset, binary_offset = 0, 0, 0
+        for idx in range(len(num_nodes)):
+            node_limit = node_offset + num_nodes[idx]
+            edge_limit = edge_offset + num_edges[idx]
+            binary_limit = binary_offset + num_binary_edges[idx]
+
+            bm = bbm[node_offset:node_limit, edge_offset:edge_limit]
+
+            bindices = binary_interactions[binary_offset:binary_limit]
+            bindices = bindices[:, :2] - node_offset
+            bindices = bindices.transpose(0, 1)
+
+            bindices, blabels = coalesce(bindices, binary_labels[idx], reduce="max")
+            bindices = bindices.transpose(0, 1)
+
+            node_offset = node_limit
+            edge_offset = edge_limit
+            binary_offset = binary_limit
+
+            predictions.append(Predictions(bm, labels[idx], bindices, blabels))
+
+        return Batch(predictions)
 
     def get_config(self) -> JSONPrimitive:
         return self._config.__dict__.copy()
@@ -160,29 +160,66 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _create_interaction_graph(
-        self, sample: Sample, node_features: Annotated[Tensor, "N D", float]
-    ) -> CombinatorialComplex:
-        human_indices = sample.entity_labels == self.human_class_id
-        human_indices = torch.nonzero(human_indices, as_tuple=True)[0]
-        target_indices = torch.arange(
-            len(sample.entity_labels), device=human_indices.device
+    def _create_decoder_input(
+        self,
+        samples: Batch[Sample],
+        images: BatchedImages,
+    ) -> tuple[CombinatorialComplex, BatchedBoundingBoxes]:
+        entity_boxes = [
+            sample.entity_boxes.resize(size).denormalize().to_xyxy()
+            for sample, size in zip(samples, images.image_sizes, strict=True)
+        ]
+
+        entity_coords = [box.coordinates for box in entity_boxes]
+        node_features = self.roi_align(images.data, entity_coords)
+        node_features = node_features.flatten(1)  # (N, C)
+        node_features = node_features.split_with_sizes(
+            [len(box) for box in entity_boxes]
         )
 
-        human_target_edges = torch.cartesian_prod(human_indices, target_indices)
-        target_human_edges = human_target_edges.flip(1)
-        edges = torch.cat([human_target_edges, target_human_edges], dim=0)
+        boundary_matrices: list[Tensor] = []
+        union_boxes: list[BoundingBoxes] = []
+        for sample, boxes in zip(samples, entity_boxes, strict=True):
+            bm, ub = self._create_interactions(sample.entity_labels, boxes)
+            boundary_matrices.append(bm)
+            union_boxes.append(ub.denormalize().to_xyxy())
+
+        union_coords = [box.coordinates for box in union_boxes]
+        edge_features = self.roi_align(images.data, union_coords)
+        edge_features = edge_features.flatten(1)  # (E, C)
+        edge_features = edge_features.split_with_sizes(
+            [len(box) for box in union_boxes]
+        )
+
+        graphs = [
+            CombinatorialComplex([nf, ef], [bm])
+            for nf, ef, bm in zip(
+                node_features, edge_features, boundary_matrices, strict=True
+            )
+        ]
+
+        ccc = CombinatorialComplex.batch(graphs)
+        bboxes = BatchedBoundingBoxes.batch(entity_boxes)
+
+        return ccc, bboxes
+
+    def _create_interactions(
+        self,
+        entity_labels: Annotated[Tensor, "N", int],
+        entity_boxes: BoundingBoxes,
+    ) -> tuple[Annotated[Tensor, "N M", bool], BoundingBoxes]:
+        # create all unique pairs of entities
+        entity_indices = torch.arange(len(entity_labels), device=entity_labels.device)
+        edges = torch.combinations(entity_indices, r=2, with_replacement=False)
         edges = edges.transpose(0, 1)  # (2, E)
 
-        # remove self-loops
-        keep = edges[0] != edges[1]
+        # remove edges where the first entity is not human
+        keep = entity_labels[edges[0]] == self.human_class_id
         edges = edges[:, keep]
-
-        edge_features = self._get_edge_features(edges, sample.entities)
 
         # create boundary matrix
         boundary_matrix = torch.zeros(
-            (len(sample.entities), edges.shape[1]),
+            (len(entity_labels), edges.shape[1]),
             dtype=torch.bool,
             device=edges.device,
         )
@@ -190,42 +227,66 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         boundary_matrix[edges[0], edge_indices] = True
         boundary_matrix[edges[1], edge_indices] = True
 
-        return CombinatorialComplex([node_features, edge_features], [boundary_matrix])
+        union_boxes = entity_boxes[edges[0]].union(entity_boxes[edges[1]])
 
-    def _get_edge_features(
-        self, edges: Annotated[Tensor, "2 E", int], boxes: BoundingBoxes
-    ) -> Annotated[Tensor, "E 36", float]:
-        edge_features = []
+        return boundary_matrix, union_boxes
 
-        boxes = boxes.normalize().to_cxcywh()
-        boxes1 = boxes[edges[0]]
-        boxes2 = boxes[edges[1]]
+    def _create_output(
+        self,
+        layer_outputs: list[tuple[CombinatorialComplex, list[HCStep]]],
+        entity_labels: Annotated[Tensor, "N", int],
+    ) -> Output:
+        outputs = []
 
-        edge_features.extend([boxes1.coordinates[:, i] for i in range(4)])
-        edge_features.extend([boxes2.coordinates[:, i] for i in range(4)])
-        edge_features.append(boxes1.aspect_ratio())
-        edge_features.append(boxes2.aspect_ratio())
+        for ccc, hc_output in layer_outputs:
+            num_nodes = list(ccc.num_cells(0, BatchMode.SEQUENCE))
+            num_edges = list(ccc.num_cells(1, BatchMode.SEQUENCE))
 
-        area1 = boxes1.area()
-        area2 = boxes2.area()
-        edge_features.append(area1)
-        edge_features.append(area2)
+            bm = ccc.boundary_matrix(1)  # (N, H)
+            interaction_logits = self.mei_classifier(ccc.cell_features(1))
 
-        edge_features.append(boxes1.iou(boxes2))
-        edge_features.append(area1 / area2)
+            dense_bm = bm.to_dense()
+            # [i, j, k] = 1 if nodes i and j are connected by hyperedge k
+            binary_interactions = (
+                dense_bm.unsqueeze(1)
+                .expand(-1, dense_bm.shape[0], -1)
+                .logical_and(dense_bm)
+            )  # (N, N, H)
 
-        dx = boxes1.coordinates[:, 0] - boxes2.coordinates[:, 0]
-        dx = dx / boxes1.coordinates[:, 2]
+            num_binary_edges = []
+            offset = 0
+            for nnodes in num_nodes:
+                limit = offset + nnodes
+                tmp = binary_interactions[offset:limit, offset:limit]
+                num_binary_edges.append(int(tmp.sum().item()))
 
-        dy = boxes1.coordinates[:, 1] - boxes2.coordinates[:, 1]
-        dy = dy / boxes1.coordinates[:, 3]
+            binary_interactions = binary_interactions.nonzero(as_tuple=False)
 
-        edge_features.extend([F.relu(dx), F.relu(-dx), F.relu(dy), F.relu(-dy)])
+            # remove binary interactions where the first entity is not human
+            keep = entity_labels[binary_interactions[:, 0]] == self.human_class_id
+            binary_interactions = binary_interactions[keep]
 
-        edge_features = torch.stack(edge_features, dim=1)
-        eps = torch.finfo(edge_features.dtype).eps
-        edge_features = torch.cat(
-            [edge_features, torch.log(edge_features + eps)], dim=1
-        )
+            # remove self interactions
+            keep = binary_interactions[:, 0] != binary_interactions[:, 1]
+            binary_interactions = binary_interactions[keep]
 
-        return edge_features
+            nodes1 = ccc.cell_features(0)[binary_interactions[:, 0]]
+            nodes2 = ccc.cell_features(0)[binary_interactions[:, 1]]
+            edge = ccc.cell_features(1)[binary_interactions[:, 2]]
+            binary = torch.cat([nodes1, nodes2, edge], dim=1)  # (E, 3C)
+            binary_logits = self.binary_classifier(binary).squeeze(1)  # (E,)
+
+            outputs.append(
+                LayerOutput(
+                    steps=hc_output,
+                    num_nodes=num_nodes,
+                    num_edges=num_edges,
+                    num_binary_edges=num_binary_edges,
+                    boundary_matrix=bm,
+                    interaction_logits=interaction_logits,
+                    binary_interactions=binary_interactions,
+                    binary_interaction_logits=binary_logits,
+                )
+            )
+
+        return outputs
