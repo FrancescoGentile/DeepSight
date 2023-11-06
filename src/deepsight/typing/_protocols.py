@@ -8,6 +8,8 @@ from typing import Any, Protocol
 import torch
 from typing_extensions import Self
 
+from ._types import JSONPrimitive
+
 
 @typing.runtime_checkable
 class Moveable(Protocol):
@@ -34,18 +36,6 @@ class Moveable(Protocol):
             The object on the given device.
         """
         ...
-
-
-JSONPrimitive = (
-    bool
-    | int
-    | float
-    | str
-    | None
-    | dict[str, "JSONPrimitive"]
-    | list["JSONPrimitive"]
-    | tuple["JSONPrimitive"]
-)
 
 
 @typing.runtime_checkable

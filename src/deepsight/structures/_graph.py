@@ -2,8 +2,7 @@
 ##
 ##
 
-from collections.abc import Iterable
-from numbers import Number
+from collections.abc import Iterable, Sequence
 from typing import Annotated, Literal, overload
 
 import torch
@@ -11,7 +10,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from typing_extensions import Self
 
-from deepsight.typing import Moveable
+from deepsight.typing import Moveable, number
 
 from ._common import BatchMode
 
@@ -25,11 +24,11 @@ class Graph(Moveable):
 
     def __init__(
         self,
-        adjacency_matrix: Annotated[Tensor, "N N", Number],
-        node_features: Annotated[Tensor, "N D", Number],
-        edge_features: Annotated[Tensor, "E C", Number] | None = None,
-        num_nodes: Iterable[int] | None = None,
-        num_edges: Iterable[int] | None = None,
+        adjacency_matrix: Annotated[Tensor, "N N", number],
+        node_features: Annotated[Tensor, "N D", number],
+        edge_features: Annotated[Tensor, "E C", number] | None = None,
+        num_nodes: Sequence[int] | None = None,
+        num_edges: Sequence[int] | None = None,
     ) -> None:
         """Initialize a graph.
 
@@ -52,12 +51,14 @@ class Graph(Moveable):
                 "not `None`."
             )
 
-        if num_nodes is None:
+        if num_nodes is None and num_edges is None:
             num_nodes = (node_features.shape[0],)
             num_edges = (adjacency_matrix.indices().shape[1],)
-        else:
-            num_nodes = tuple(num_nodes)
-            num_edges = tuple(num_edges)  # type: ignore
+        elif num_nodes is None or num_edges is None:
+            raise ValueError(
+                "The arguments `num_nodes` and `num_edges` must be both `None` or both "
+                "not `None`."
+            )
 
         adjacency_matrix = adjacency_matrix.to_sparse_coo()
 
@@ -72,7 +73,7 @@ class Graph(Moveable):
         self._num_edges = num_edges
 
     @classmethod
-    def batch(cls, graphs: Iterable[Self]) -> Self:
+    def batch(cls, graphs: Sequence[Self]) -> Self:
         """Batch multiple graphs into a single graph.
 
         !!! note
@@ -80,7 +81,6 @@ class Graph(Moveable):
             If the given list contains only one graph, this method returns the graph
             itself.
         """
-        graphs = list(graphs)
         if len(graphs) == 0:
             raise ValueError("Expected at least one graph, got none.")
         if len(graphs) == 1:
@@ -142,13 +142,12 @@ class Graph(Moveable):
     ) -> int: ...
 
     @overload
-    def num_nodes(
-        self, batch_mode: Literal[BatchMode.STACK, BatchMode.SEQUENCE]
-    ) -> Iterable[int]: ...
+    def num_nodes(self, batch_mode: Literal[BatchMode.SEQUENCE]) -> tuple[int, ...]: ...
 
     def num_nodes(
-        self, batch_mode: BatchMode = BatchMode.CONCAT
-    ) -> int | Iterable[int]:
+        self,
+        batch_mode: Literal[BatchMode.CONCAT, BatchMode.SEQUENCE] = BatchMode.CONCAT,
+    ) -> int | tuple[int, ...]:
         """Get the number of nodes in the graph.
 
         Args:
@@ -159,10 +158,8 @@ class Graph(Moveable):
         match batch_mode:
             case BatchMode.CONCAT:
                 return sum(self._num_nodes)
-            case BatchMode.STACK:
-                return self._num_nodes
             case BatchMode.SEQUENCE:
-                return self._num_nodes
+                return tuple(self._num_nodes)
 
     @overload
     def num_edges(
@@ -170,13 +167,12 @@ class Graph(Moveable):
     ) -> int: ...
 
     @overload
-    def num_edges(
-        self, batch_mode: Literal[BatchMode.STACK, BatchMode.SEQUENCE]
-    ) -> Iterable[int]: ...
+    def num_edges(self, batch_mode: Literal[BatchMode.SEQUENCE]) -> tuple[int, ...]: ...
 
     def num_edges(
-        self, batch_mode: BatchMode = BatchMode.CONCAT
-    ) -> int | Iterable[int]:
+        self,
+        batch_mode: Literal[BatchMode.CONCAT, BatchMode.SEQUENCE] = BatchMode.CONCAT,
+    ) -> int | tuple[int, ...]:
         """Get the number of edges in the graph.
 
         Args:
@@ -187,32 +183,30 @@ class Graph(Moveable):
         match batch_mode:
             case BatchMode.CONCAT:
                 return sum(self._num_edges)
-            case BatchMode.STACK:
-                return self._num_edges
             case BatchMode.SEQUENCE:
-                return self._num_edges
+                return tuple(self._num_edges)
 
     @overload
     def adjacency_matrix(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]: ...
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]: ...
 
     @overload
     def adjacency_matrix(
         self, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N N", Number, torch.sparse_coo]: ...
+    ) -> Annotated[Tensor, "B N N", number, torch.sparse_coo]: ...
 
     @overload
     def adjacency_matrix(
         self, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N N", Number, torch.sparse_coo]]: ...
+    ) -> tuple[Annotated[Tensor, "N N", number, torch.sparse_coo], ...]: ...
 
     def adjacency_matrix(
         self, batch_mode: BatchMode = BatchMode.CONCAT
     ) -> (
-        Annotated[Tensor, "N N", Number, torch.sparse_coo]
-        | Annotated[Tensor, "B N N", Number, torch.sparse_coo]
-        | Iterable[Annotated[Tensor, "N N", Number, torch.sparse_coo]]
+        Annotated[Tensor, "N N", number, torch.sparse_coo]
+        | Annotated[Tensor, "B N N", number, torch.sparse_coo]
+        | tuple[Annotated[Tensor, "N N", number, torch.sparse_coo], ...]
     ):
         """Get the adjacency matrix of the graph."""
         match batch_mode:
@@ -229,36 +223,36 @@ class Graph(Moveable):
                         indices[idx] = indices[idx] - node_offset
                     node_offset += n_nodes
 
-                return [
+                return tuple(
                     torch.sparse_coo_tensor(
                         indices=indices[idx],
                         values=values[idx],
                         size=(n_nodes, n_nodes),
                     )
                     for idx, n_nodes in enumerate(self._num_nodes)
-                ]
+                )
 
     @overload
     def node_features(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N D", Number]: ...
+    ) -> Annotated[Tensor, "N D", number]: ...
 
     @overload
     def node_features(
         self, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N D", Number]: ...
+    ) -> Annotated[Tensor, "B N D", number]: ...
 
     @overload
     def node_features(
         self, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N D", Number]]: ...
+    ) -> tuple[Annotated[Tensor, "N D", number], ...]: ...
 
     def node_features(
         self, batch_mode: BatchMode = BatchMode.CONCAT
     ) -> (
-        Annotated[Tensor, "N D", Number]
-        | Annotated[Tensor, "B N D", Number]
-        | Iterable[Annotated[Tensor, "N D", Number]]
+        Annotated[Tensor, "N D", number]
+        | Annotated[Tensor, "B N D", number]
+        | tuple[Annotated[Tensor, "N D", number], ...]
     ):
         """Get the features of the nodes in the graph."""
         match batch_mode:
@@ -268,29 +262,29 @@ class Graph(Moveable):
                 nodes = self._node_features.split_with_sizes(self._num_nodes)
                 return pad_sequence(nodes, batch_first=True)
             case BatchMode.SEQUENCE:
-                return self._node_features.split_with_sizes(self._num_nodes)
+                return tuple(self._node_features.split_with_sizes(self._num_nodes))
 
     @overload
     def edge_features(
         self, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "E C", Number] | None: ...
+    ) -> Annotated[Tensor, "E C", number] | None: ...
 
     @overload
     def edge_features(
         self, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B E C", Number] | None: ...
+    ) -> Annotated[Tensor, "B E C", number] | None: ...
 
     @overload
     def edge_features(
         self, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "E C", Number]] | None: ...
+    ) -> tuple[Annotated[Tensor, "E C", number], ...] | None: ...
 
     def edge_features(
         self, batch_mode: BatchMode = BatchMode.CONCAT
     ) -> (
-        Annotated[Tensor, "E C", Number]
-        | Annotated[Tensor, "B E C", Number]
-        | Iterable[Annotated[Tensor, "E C", Number]]
+        Annotated[Tensor, "E C", number]
+        | Annotated[Tensor, "B E C", number]
+        | tuple[Annotated[Tensor, "E C", number], ...]
         | None
     ):
         """Get the features of the edges in the graph."""
@@ -304,17 +298,17 @@ class Graph(Moveable):
                 edges = self._edge_features.split_with_sizes(self._num_edges)
                 return pad_sequence(edges, batch_first=True)
             case BatchMode.SEQUENCE:
-                return self._edge_features.split_with_sizes(self._num_edges)
+                return tuple(self._edge_features.split_with_sizes(self._num_edges))
 
     def replace(  # noqa
         self,
-        node_features: Annotated[Tensor, "N D", Number]
-        | Annotated[Tensor, "B N D", Number]
-        | Iterable[Annotated[Tensor, "N D", Number]]
+        node_features: Annotated[Tensor, "N D", number]
+        | Annotated[Tensor, "B N D", number]
+        | Iterable[Annotated[Tensor, "N D", number]]
         | None = None,
-        edge_features: Annotated[Tensor, "E C", Number]
-        | Annotated[Tensor, "B E C", Number]
-        | Iterable[Annotated[Tensor, "E C", Number]]
+        edge_features: Annotated[Tensor, "E C", number]
+        | Annotated[Tensor, "B E C", number]
+        | Iterable[Annotated[Tensor, "E C", number]]
         | None = None,
     ) -> Self:
         """Return a new graph with the given node and edge features.
@@ -465,12 +459,12 @@ class Graph(Moveable):
 # --------------------------------------------------------------------------- #
 
 
-def _check_tensors(
+def _check_tensors(  # noqa: C901
     adj: Tensor,
     nodes: Tensor,
     edges: Tensor | None,
-    num_nodes: Iterable[int],
-    num_edges: Iterable[int],
+    num_nodes: Sequence[int],
+    num_edges: Sequence[int],
 ) -> None:
     """Check that the tensors have the correct shapes and are on the same device."""
     if nodes.ndim != 2:
@@ -494,6 +488,9 @@ def _check_tensors(
             f"number of edges of each batched graph, got {adj.indices().shape[1]} and "
             f"{sum(num_edges)} respectively."
         )
+
+    if len(num_nodes) != len(num_edges):
+        raise ValueError("Inconsistent number of batches.")
 
     if nodes.device != adj.device:
         raise ValueError(
@@ -519,7 +516,7 @@ def _check_tensors(
             )
 
 
-def _check_graphs(graphs: list[Graph]) -> None:
+def _check_graphs(graphs: Sequence[Graph]) -> None:
     """Check that the graphs are compatible to be batched."""
     if any(
         graphs[0].node_features().shape[1] != graph.node_features().shape[1]

@@ -2,8 +2,10 @@
 ##
 ##
 
+from __future__ import annotations
+
 import typing
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator, Sequence
 from typing import Generic, TypeVar
 
 import torch
@@ -11,7 +13,7 @@ from typing_extensions import Self
 
 from deepsight.typing import Moveable
 
-T = TypeVar("T", bound=Moveable)
+T = TypeVar("T")
 
 
 class Batch(Moveable, Generic[T]):
@@ -21,14 +23,15 @@ class Batch(Moveable, Generic[T]):
     # Constructor and Factory methods
     # ------------------------------------------------------------------------- #
 
-    def __init__(self, samples: Iterable[T]) -> None:
-        samples = tuple(samples)
+    def __init__(self, samples: Sequence[T]) -> None:
+        super().__init__()
 
         if len(samples) == 0:
             raise ValueError("Batch must contain at least one sample.")
 
-        if any(sample.device != samples[0].device for sample in samples):
-            raise ValueError("All samples must be on the same device.")
+        if isinstance(samples[0], Moveable):
+            if any(sample.device != samples[0].device for sample in samples):  # type: ignore[unreachable]
+                raise ValueError("All samples must be on the same device.")
 
         self._samples = samples
 
@@ -38,8 +41,17 @@ class Batch(Moveable, Generic[T]):
 
     @property
     def device(self) -> torch.device:
-        """The device the samples are on."""
-        return self._samples[0].device
+        """The device the samples are on.
+
+        !!! warning
+
+            This property is not implemented for all sample types. If a sample type
+            does not implement this property, the CPU device is returned.
+        """
+        if isinstance(self._samples[0], Moveable):
+            return self._samples[0].device
+
+        return torch.device("cpu")
 
     # ------------------------------------------------------------------------- #
     # Public methods
@@ -47,6 +59,12 @@ class Batch(Moveable, Generic[T]):
 
     def move(self, device: torch.device, non_blocking: bool = False) -> Self:
         """Move this batch to the given device.
+
+        !!! warning
+
+            This method is not implemented for all sample types. If a sample type
+            does not implement this method, the batch will not be moved and `self`
+            will be returned.
 
         !!! note
 
@@ -64,54 +82,35 @@ class Batch(Moveable, Generic[T]):
         if self.device == device:
             return self
 
+        if not isinstance(self._samples[0], Moveable):
+            return self
+
         return self.__class__(
-            [sample.move(device, non_blocking) for sample in self._samples]
+            [sample.move(device, non_blocking) for sample in self._samples]  # type: ignore[unreachable]
         )
 
-    def split(
-        self, *, num_splits: int | None = None, split_size: int | None = None
-    ) -> Iterable[Self]:
+    def split(self, num_splits: int) -> tuple[Self, ...]:
         """Split this batch into smaller batches.
 
         Args:
-            num_splits: The number of batches to split into. This must be specified if
-                `split_size` is not.
-            split_size: The size of each batch. This must be specified if `num_splits`
-                is not.
+            num_splits: The number of batches to split into.
 
         Returns:
-            An iterable of batches.
+            The smaller batches.
 
         Raises:
-            ValueError: If neither `num_splits` nor `split_size` is specified.
-            ValueError: If `num_splits` and `split_size` are both specified and
-                inconsistent.
-            ValueError: If `num_splits` does not divide the batch size.
-            ValueError: If `split_size` does not divide the batch size.
+            ValueError: If the batch size is not divisible by `num_splits`.
         """
-        match num_splits, split_size:
-            case None, None:
-                raise ValueError("Either num_splits or split_size must be specified.")
-            case _, None:
-                if len(self) % num_splits != 0:  # type: ignore
-                    raise ValueError(
-                        "num_splits does not divide the batch size evenly."
-                    )
-                split_size = len(self) // num_splits  # type: ignore
-            case None, _:
-                if len(self) % split_size != 0:
-                    raise ValueError(
-                        "split_size does not divide the batch size evenly."
-                    )
-            case _, _:
-                if num_splits * split_size != len(self):
-                    raise ValueError(
-                        "num_splits and split_size are inconsistent with the "
-                        "batch size."
-                    )
+        if len(self) % num_splits != 0:
+            raise ValueError(
+                f"Batch size {len(self)} is not divisible by {num_splits}."
+            )
+        split_size = len(self) // num_splits
 
-        for i in range(num_splits):  # type: ignore
-            yield self.__class__(self._samples[i * split_size : (i + 1) * split_size])  # type: ignore
+        return tuple(
+            self.__class__(self._samples[i * split_size : (i + 1) * split_size])
+            for i in range(num_splits)
+        )
 
     # ------------------------------------------------------------------------- #
     # Magic methods

@@ -9,11 +9,10 @@ from torch.utils.data import DataLoader as _DataLoader
 
 from deepsight.structures import Batch
 from deepsight.tasks import Dataset
-from deepsight.typing import Moveable
 
-S = TypeVar("S", bound=Moveable)
-A = TypeVar("A", bound=Moveable)
-T = TypeVar("T", bound=Moveable)
+S = TypeVar("S")
+A = TypeVar("A")
+T = TypeVar("T")
 
 
 class DataLoader(Generic[S, A, T]):

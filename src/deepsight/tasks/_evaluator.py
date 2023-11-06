@@ -7,9 +7,9 @@ from collections.abc import Iterable
 from typing import Generic, Protocol, TypeVar
 
 from deepsight.structures import Batch
-from deepsight.typing import Moveable, str_enum
+from deepsight.typing import number, str_enum
 
-P = TypeVar("P", bound=Moveable)
+P = TypeVar("P")
 
 
 @str_enum
@@ -42,7 +42,7 @@ class Evaluator(Generic[P], Protocol):
         """Update the metrics with the given predictions and ground-truth."""
         ...
 
-    def compute_numeric_metrics(self) -> dict[str, float]:
+    def compute_numeric_metrics(self) -> dict[str, number]:
         """Compute the numeric metrics.
 
         Numeric metrics are metrics that can be represented as a number. For

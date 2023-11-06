@@ -2,7 +2,7 @@
 ##
 ##
 
-from collections.abc import Iterable
+from collections.abc import Sequence
 from typing import Annotated
 
 import torch
@@ -30,10 +30,8 @@ class BatchedBoundingBoxes:
         self._image_sizes = image_sizes
 
     @classmethod
-    def batch(cls, boxes: Iterable[BoundingBoxes]) -> Self:
+    def batch(cls, boxes: Sequence[BoundingBoxes]) -> Self:
         """Batch a list of bounding boxes into a single tensor."""
-        boxes = list(boxes)
-
         if len(boxes) == 0:
             raise ValueError("Cannot batch empty list of bounding boxes")
 

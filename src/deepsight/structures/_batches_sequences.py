@@ -2,12 +2,14 @@
 ##
 ##
 
-from numbers import Number
+from collections.abc import Sequence
 from typing import Annotated
 
 import torch
 from torch import Tensor
 from typing_extensions import Self
+
+from deepsight.typing import number
 
 
 class BatchedSequences:
@@ -25,7 +27,7 @@ class BatchedSequences:
 
     def __init__(
         self,
-        data: Annotated[Tensor, "B L D", Number],
+        data: Annotated[Tensor, "B L D", number],
         sequence_lengths: tuple[int, ...] | None = None,
         mask: Annotated[Tensor, "B L", bool] | None = None,
         *,
@@ -86,7 +88,7 @@ class BatchedSequences:
     @classmethod
     def batch(
         cls,
-        sequences: list[Annotated[Tensor, "L D", Number]],
+        sequences: Sequence[Annotated[Tensor, "L D", number]],
         padding_value: int | float = 0.0,
     ) -> Self:
         """Batch a list of sequences.
@@ -120,7 +122,7 @@ class BatchedSequences:
     # ----------------------------------------------------------------------- #
 
     @property
-    def data(self) -> Annotated[Tensor, "B L D", Number]:
+    def data(self) -> Annotated[Tensor, "B L D", number]:
         """The tensor containing the batched sequences.
 
         The tensor has shape `(B, L, D)`, where `B` is the batch size, `L` is the
@@ -164,11 +166,11 @@ class BatchedSequences:
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def unbatch(self) -> list[Annotated[Tensor, "L D", Number]]:
+    def unbatch(self) -> tuple[Annotated[Tensor, "L D", number], ...]:
         """Unbatch the sequences."""
-        return [
+        return tuple(
             self._data[i, :length] for i, length in enumerate(self._sequence_lengths)
-        ]
+        )
 
     def to_device(self, device: torch.device, non_blocking: bool = False) -> Self:
         return self.__class__(
@@ -178,7 +180,7 @@ class BatchedSequences:
             check_validity=False,
         )
 
-    def replace(self, data: Annotated[Tensor, "B L D", Number]) -> Self:
+    def replace(self, data: Annotated[Tensor, "B L D", number]) -> Self:
         """Replace the data tensor.
 
         Raises:
@@ -202,7 +204,7 @@ class BatchedSequences:
         """Get the number of sequences in the batch."""
         return len(self._sequence_lengths)
 
-    def __getitem__(self, index: int) -> Annotated[Tensor, "L D", Number]:
+    def __getitem__(self, index: int) -> Annotated[Tensor, "L D", number]:
         """Get the sequence in the batch at the given index."""
         return self._data[index, : self._sequence_lengths[index]]
 
@@ -264,7 +266,7 @@ def _compute_mask_from_lengths(
     return mask
 
 
-def _check_sequences(sequences: list[Tensor]) -> None:
+def _check_sequences(sequences: Sequence[Tensor]) -> None:
     """Check that the sequences are valid.
 
     Args:

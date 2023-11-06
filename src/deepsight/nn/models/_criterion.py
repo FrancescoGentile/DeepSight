@@ -8,10 +8,9 @@ from typing import Annotated, Generic, Protocol, TypeVar
 from torch import Tensor
 
 from deepsight.structures import Batch
-from deepsight.typing import Moveable
 
 O = TypeVar("O", contravariant=True)  # noqa: E741
-A = TypeVar("A", bound=Moveable)
+A = TypeVar("A")
 
 
 class Criterion(Generic[O, A], Protocol):

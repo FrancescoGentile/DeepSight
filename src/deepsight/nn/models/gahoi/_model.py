@@ -159,10 +159,10 @@ class GAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         # Decoder
         boxes = BatchedBoundingBoxes.batch(entity_boxes)
         batched_graphs = Graph.batch(
-            (
+            [
                 self._create_interaction_graph(sample, features)
                 for sample, features in zip(samples, node_features, strict=True)
-            )
+            ]
         )
         edge_features = self.edge_proj(batched_graphs.edge_features())
         batched_graphs = batched_graphs.replace(edge_features=edge_features)

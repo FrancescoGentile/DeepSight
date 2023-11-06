@@ -3,12 +3,13 @@
 ##
 
 from collections.abc import Sequence
-from numbers import Number
 from typing import Annotated
 
 import torch
 from torch import Tensor
 from typing_extensions import Self
+
+from deepsight.typing import number
 
 from ._batches_sequences import BatchedSequences
 
@@ -28,7 +29,7 @@ class BatchedImages:
 
     def __init__(
         self,
-        data: Annotated[Tensor, "B C H W", Number],
+        data: Annotated[Tensor, "B C H W", number],
         image_sizes: tuple[tuple[int, int], ...] | None = None,
         mask: Annotated[Tensor, "B H W", bool] | None = None,
         *,
@@ -92,7 +93,7 @@ class BatchedImages:
     @classmethod
     def batch(
         cls,
-        images: Sequence[Annotated[Tensor, "C H W", Number]],
+        images: Sequence[Annotated[Tensor, "C H W", number]],
         padding_value: int | float = 0,
     ) -> Self:
         """Batch a list of images into a single tensor.
@@ -127,7 +128,7 @@ class BatchedImages:
     # ----------------------------------------------------------------------- #
 
     @property
-    def data(self) -> Annotated[Tensor, "B C H W", Number]:
+    def data(self) -> Annotated[Tensor, "B C H W", number]:
         """The tensor containing the batched images.
 
         The tensor has shape `(B, C, H, W)`, where `B` is the batch size, `C` is
@@ -171,11 +172,11 @@ class BatchedImages:
     # Public methods
     # ----------------------------------------------------------------------- #
 
-    def unbatch(self) -> list[Annotated[Tensor, "C H W", Number]]:
+    def unbatch(self) -> list[Annotated[Tensor, "C H W", number]]:
         """Unbatch the images into a list of tensors."""
         return [self._data[i, :, :h, :w] for i, (h, w) in enumerate(self._image_sizes)]
 
-    def replace(self, data: Annotated[Tensor, "B C H W", Number]) -> Self:
+    def replace(self, data: Annotated[Tensor, "B C H W", number]) -> Self:
         """Replace the data tensor.
 
         Raises:
@@ -212,7 +213,7 @@ class BatchedImages:
         """Get the number of images in the batch."""
         return self._data.shape[0]
 
-    def __getitem__(self, index: int) -> Annotated[Tensor, "C H W", Number]:
+    def __getitem__(self, index: int) -> Annotated[Tensor, "C H W", number]:
         """Get the image in the batch at the given index."""
         h, w = self._image_sizes[index]
         return self._data[index, :, :h, :w]

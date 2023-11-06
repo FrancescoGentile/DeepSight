@@ -28,10 +28,10 @@ from deepsight.typing import Configurable, JSONPrimitive, Moveable, Stateful
 from ._dataloader import DataLoader
 from .schedulers import ReciprocalLR
 
-S = TypeVar("S", bound=Moveable)
+S = TypeVar("S")
 O = TypeVar("O")  # noqa
-A = TypeVar("A", bound=Moveable)
-P = TypeVar("P", bound=Moveable)
+A = TypeVar("A")
+P = TypeVar("P")
 
 
 class Engine(Stateful, Generic[S, O, A, P]):
@@ -321,7 +321,7 @@ class Engine(Stateful, Generic[S, O, A, P]):
                 torch.cuda.empty_cache()
 
                 metrics = self.evaluator.compute_numeric_metrics()
-                metric_value = metrics[self.metric_to_optimize]
+                metric_value = float(metrics[self.metric_to_optimize])
                 if metric_value > current_optimal_metric:
                     current_optimal_metric = metric_value
                     current_patience = self.patience

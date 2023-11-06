@@ -12,10 +12,10 @@ from typing_extensions import Self
 from deepsight.structures import Batch
 from deepsight.typing import Moveable, Stateful
 
-S = TypeVar("S", bound=Moveable)
+S = TypeVar("S")
 O = TypeVar("O")  # noqa
-A = TypeVar("A", bound=Moveable)
-P = TypeVar("P", bound=Moveable)
+A = TypeVar("A")
+P = TypeVar("P")
 
 
 class DeepSightModel(nn.Module, Moveable, Stateful, Generic[S, O, A, P], abc.ABC):

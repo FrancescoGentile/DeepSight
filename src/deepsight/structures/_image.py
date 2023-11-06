@@ -2,7 +2,6 @@
 ##
 ##
 
-from numbers import Number
 from pathlib import Path
 from typing import Annotated
 
@@ -11,7 +10,7 @@ from torch import Tensor
 from torchvision import io
 from typing_extensions import Self
 
-from deepsight.typing import Moveable
+from deepsight.typing import Moveable, number
 
 
 class Image(Moveable):
@@ -21,7 +20,7 @@ class Image(Moveable):
     # Constructor and Factory Methods
     # ----------------------------------------------------------------------- #
 
-    def __init__(self, data: Annotated[Tensor, "3 H W", Number]) -> None:
+    def __init__(self, data: Annotated[Tensor, "3 H W", number]) -> None:
         self._data = data
 
     @classmethod
@@ -33,7 +32,7 @@ class Image(Moveable):
     # ----------------------------------------------------------------------- #
 
     @property
-    def data(self) -> Annotated[Tensor, "3 H W", Number]:
+    def data(self) -> Annotated[Tensor, "3 H W", number]:
         """The underlying tensor."""
         return self._data
 

@@ -217,12 +217,12 @@ class PVIC(DeepSightModel[Sample, Output, Annotations, Predictions], Configurabl
 
     def postprocess(self, output: Output) -> Batch[Predictions]:
         return Batch(
-            (
+            [
                 Predictions(indices, torch.sigmoid(logits))
                 for indices, logits in zip(
                     output.ho_indices, output.ho_logits, strict=True
                 )
-            )
+            ]
         )
 
     # ----------------------------------------------------------------------- #

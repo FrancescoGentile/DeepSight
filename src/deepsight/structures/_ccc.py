@@ -2,14 +2,15 @@
 ##
 ##
 
-from collections.abc import Iterable
-from numbers import Number
+from collections.abc import Iterable, Sequence
 from typing import Annotated, Literal, overload
 
 import torch
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from typing_extensions import Self
+
+from deepsight.typing import number
 
 from ._common import BatchMode
 
@@ -23,10 +24,10 @@ class CombinatorialComplex:
 
     def __init__(
         self,
-        cell_features: Iterable[Annotated[Tensor, "N D", Number]],
-        boundary_matrices: Iterable[Annotated[Tensor, "N M", Number]],
-        num_cells: Iterable[tuple[int, ...]] | None = None,
-        boundary_matrices_sizes: Iterable[tuple[int, ...]] | None = None,
+        cell_features: Sequence[Annotated[Tensor, "N D", number]],
+        boundary_matrices: Sequence[Annotated[Tensor, "N M", number]],
+        num_cells: Sequence[Sequence[int]] | None = None,
+        boundary_matrices_sizes: Sequence[Sequence[int]] | None = None,
     ) -> None:
         r"""Initialize a combinatorial complex.
 
@@ -59,12 +60,8 @@ class CombinatorialComplex:
         boundary_matrices = tuple(b.to_sparse_coo() for b in boundary_matrices)
         if num_cells is None:
             num_cells = tuple((c.shape[0],) for c in cell_features)
-        else:
-            num_cells = tuple(num_cells)
 
-        if boundary_matrices_sizes is not None:
-            boundary_matrices_sizes = tuple(boundary_matrices_sizes)
-        else:
+        if boundary_matrices_sizes is None:
             boundary_matrices_sizes = tuple((bm._nnz(),) for bm in boundary_matrices)
 
         _check_tensors(
@@ -77,7 +74,7 @@ class CombinatorialComplex:
         self._boundary_matrices_sizes = boundary_matrices_sizes
 
     @classmethod
-    def batch(cls, complexes: Iterable[Self]) -> Self:
+    def batch(cls, complexes: Sequence[Self]) -> Self:
         """Batch multiple combinatorial complexes into a single complex.
 
         !!! note
@@ -85,8 +82,6 @@ class CombinatorialComplex:
             If the given list contains only one element, then that element is
             returned.
         """
-        complexes = tuple(complexes)
-
         if len(complexes) == 0:
             raise ValueError("Expected at least one complex, got none.")
         elif len(complexes) == 1:
@@ -172,12 +167,14 @@ class CombinatorialComplex:
 
     @overload
     def num_cells(
-        self, rank: int, batch_mode: Literal[BatchMode.STACK, BatchMode.SEQUENCE]
-    ) -> Iterable[int]: ...
+        self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
+    ) -> tuple[int, ...]: ...
 
     def num_cells(
-        self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
-    ) -> int | Iterable[int]:
+        self,
+        rank: int,
+        batch_mode: Literal[BatchMode.CONCAT, BatchMode.SEQUENCE] = BatchMode.CONCAT,
+    ) -> int | tuple[int, ...]:
         """Get the number of cells of the given rank.
 
         Args:
@@ -198,32 +195,30 @@ class CombinatorialComplex:
         match batch_mode:
             case BatchMode.CONCAT:
                 return sum(self._num_cells[rank])
-            case BatchMode.STACK:
-                return self._num_cells[rank]
             case BatchMode.SEQUENCE:
-                return self._num_cells[rank]
+                return tuple(self._num_cells[rank])
 
     @overload
     def cell_features(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N D", Number]: ...
+    ) -> Annotated[Tensor, "N D", number]: ...
 
     @overload
     def cell_features(
         self, rank: int, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N D", Number]: ...
+    ) -> Annotated[Tensor, "B N D", number]: ...
 
     @overload
     def cell_features(
         self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N D", Number]]: ...
+    ) -> tuple[Annotated[Tensor, "N D", number], ...]: ...
 
     def cell_features(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
     ) -> (
-        Annotated[Tensor, "N D", Number]
-        | Annotated[Tensor, "B N D", Number]
-        | Iterable[Annotated[Tensor, "N D", Number]]
+        Annotated[Tensor, "N D", number]
+        | Annotated[Tensor, "B N D", number]
+        | tuple[Annotated[Tensor, "N D", number], ...]
     ):
         """Get the features of the cells of the given rank.
 
@@ -257,29 +252,31 @@ class CombinatorialComplex:
                     batch_first=True,
                 )
             case BatchMode.SEQUENCE:
-                return self._cell_features[rank].split_with_sizes(self._num_cells[rank])
+                return tuple(
+                    self._cell_features[rank].split_with_sizes(self._num_cells[rank])
+                )
 
     @overload
     def boundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "N M", Number, torch.sparse_coo]: ...
+    ) -> Annotated[Tensor, "N M", number, torch.sparse_coo]: ...
 
     @overload
     def boundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B N M", Number, torch.sparse_coo]: ...
+    ) -> Annotated[Tensor, "B N M", number, torch.sparse_coo]: ...
 
     @overload
     def boundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "N M", Number, torch.sparse_coo]]: ...
+    ) -> tuple[Annotated[Tensor, "N M", number, torch.sparse_coo], ...]: ...
 
     def boundary_matrix(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
     ) -> (
-        Annotated[Tensor, "N M", Number, torch.sparse_coo]
-        | Annotated[Tensor, "B N M", Number, torch.sparse_coo]
-        | Iterable[Annotated[Tensor, "N M", Number, torch.sparse_coo]]
+        Annotated[Tensor, "N M", number, torch.sparse_coo]
+        | Annotated[Tensor, "B N M", number, torch.sparse_coo]
+        | tuple[Annotated[Tensor, "N M", number, torch.sparse_coo], ...]
     ):
         r"""Get the boundary matrix for the given rank.
 
@@ -360,36 +357,36 @@ class CombinatorialComplex:
                 size=(len(self._num_cells[rank]), max_r_minus_1_ncells, max_r_ncells),
             )
         else:
-            return [
+            return tuple(
                 torch.sparse_coo_tensor(
                     indices=indices[idx],
                     values=values[idx],
                     size=(self._num_cells[rank - 1][idx], self._num_cells[rank][idx]),
                 )
                 for idx in range(len(indices))
-            ]
+            )
 
     @overload
     def coboundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.CONCAT] = BatchMode.CONCAT
-    ) -> Annotated[Tensor, "M N", Number, torch.sparse_coo]: ...
+    ) -> Annotated[Tensor, "M N", number, torch.sparse_coo]: ...
 
     @overload
     def coboundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.STACK]
-    ) -> Annotated[Tensor, "B M N", Number, torch.sparse_coo]: ...
+    ) -> Annotated[Tensor, "B M N", number, torch.sparse_coo]: ...
 
     @overload
     def coboundary_matrix(
         self, rank: int, batch_mode: Literal[BatchMode.SEQUENCE]
-    ) -> Iterable[Annotated[Tensor, "M N", Number, torch.sparse_coo]]: ...
+    ) -> tuple[Annotated[Tensor, "M N", number, torch.sparse_coo], ...]: ...
 
     def coboundary_matrix(
         self, rank: int, batch_mode: BatchMode = BatchMode.CONCAT
     ) -> (
-        Annotated[Tensor, "M N", Number, torch.sparse_coo]
-        | Annotated[Tensor, "B M N", Number, torch.sparse_coo]
-        | Iterable[Annotated[Tensor, "M N", Number, torch.sparse_coo]]
+        Annotated[Tensor, "M N", number, torch.sparse_coo]
+        | Annotated[Tensor, "B M N", number, torch.sparse_coo]
+        | tuple[Annotated[Tensor, "M N", number, torch.sparse_coo], ...]
     ):
         r"""Get the coboundary matrix for the given rank.
         
@@ -424,13 +421,11 @@ class CombinatorialComplex:
             case BatchMode.STACK:
                 return self.boundary_matrix(rank, batch_mode).transpose(1, 2)
             case BatchMode.SEQUENCE:
-                return (
-                    bm.transpose(0, 1) for bm in self.boundary_matrix(rank, batch_mode)
-                )
+                return tuple(bm.T for bm in self.boundary_matrix(rank, batch_mode))
 
     def lower_laplacian_matrix(
         self, rank: int
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]:
         r"""Get the lower Laplacian matrix for the given rank.
 
         The lower Laplacian matrix of rank $r$ records to which cells of rank $r$
@@ -453,7 +448,7 @@ class CombinatorialComplex:
 
     def upper_laplacian_matrix(
         self, rank: int
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]:
         r"""Get the upper Laplacian matrix for the given rank.
 
         The upper Laplacian matrix of rank $r$ records to which cells of rank $r$
@@ -478,7 +473,7 @@ class CombinatorialComplex:
 
     def lower_degree_matrix(
         self, rank: int
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]:
         """Get the lower degree matrix for the given rank.
 
         The lower degree matrix of rank $r$ is a diagonal matrix that records the
@@ -499,7 +494,7 @@ class CombinatorialComplex:
 
     def upper_degree_matrix(
         self, rank: int
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]:
         """Get the upper degree matrix for the given rank.
 
         The upper degree matrix of rank $r$ is a diagonal matrix that records the
@@ -520,7 +515,7 @@ class CombinatorialComplex:
 
     def lower_adjacency_matrix(
         self, rank: int
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]:
         r"""Get the lower adjacency matrix for the given rank.
 
         The lower adjacency matrix is defined as
@@ -539,7 +534,7 @@ class CombinatorialComplex:
 
     def upper_adjacency_matrix(
         self, rank: int
-    ) -> Annotated[Tensor, "N N", Number, torch.sparse_coo]:
+    ) -> Annotated[Tensor, "N N", number, torch.sparse_coo]:
         r"""Get the upper adjacency matrix for the given rank.
 
         The upper adjacency matrix is defined as
@@ -559,9 +554,9 @@ class CombinatorialComplex:
     def replace(  # noqa
         self,
         *args: tuple[
-            Annotated[Tensor, "N D", Number]
-            | Annotated[Tensor, "B N D", Number]
-            | Iterable[Annotated[Tensor, "N D", Number]],
+            Annotated[Tensor, "N D", number]
+            | Annotated[Tensor, "B N D", number]
+            | Iterable[Annotated[Tensor, "N D", number]],
             int,
         ],
     ) -> Self:
@@ -624,7 +619,7 @@ class CombinatorialComplex:
             self._boundary_matrices_sizes,
         )
 
-    def unbatch(self) -> Iterable[Self]:
+    def unbatch(self) -> tuple[Self, ...]:
         """Unbatch the combinatorial complex into a sequence of complexes.
 
         !!! note
@@ -651,7 +646,7 @@ class CombinatorialComplex:
             for idx in range(B):
                 boundary_matrices[idx].append(bm[idx])
 
-        return (
+        return tuple(
             self.__class__(cf, bm)
             for cf, bm in zip(cell_features, boundary_matrices, strict=True)
         )
@@ -674,10 +669,10 @@ class CombinatorialComplex:
 
 
 def _check_tensors(  # noqa
-    cell_features: tuple[Annotated[Tensor, "N D", Number], ...],
-    boundary_matrices: tuple[Annotated[Tensor, "N M", Number], ...],
-    num_cells: tuple[tuple[int, ...], ...],
-    boundary_matrices_sizes: tuple[tuple[int, ...], ...],
+    cell_features: Sequence[Annotated[Tensor, "N D", number]],
+    boundary_matrices: Sequence[Annotated[Tensor, "N M", number]],
+    num_cells: Sequence[Sequence[int]],
+    boundary_matrices_sizes: Sequence[Sequence[int]],
 ) -> None:
     if len(cell_features) == 0:
         raise ValueError("Expected at least one cell feature, got none.")
