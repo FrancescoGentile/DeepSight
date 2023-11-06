@@ -34,6 +34,45 @@ class InterpolationMode(enum.Enum):
                 return T.InterpolationMode.BICUBIC
 
 
+class Resize(Transform):
+    def __init__(
+        self,
+        size: int | tuple[int, int],
+        max_size: int | None = None,
+        interpolation: InterpolationMode = InterpolationMode.BILINEAR,
+        antialias: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.size = size
+        self.max_size = max_size
+        self.interpolation = interpolation
+        self.antialias = antialias
+
+    def _apply(
+        self, image: Image, boxes: BoundingBoxes | None
+    ) -> tuple[Image, BoundingBoxes | None]:
+        if boxes is not None and boxes.image_size != image.size:
+            raise ValueError(
+                "The image size of the boxes does not match the size of the image, "
+                f"got {boxes.image_size} and {image.size} respectively."
+            )
+
+        new_image = F.resize(
+            image.data,
+            size=[self.size] if isinstance(self.size, int) else list(self.size),
+            max_size=self.max_size,
+            interpolation=self.interpolation.to_torchvision(),
+            antialias=self.antialias,
+        )
+        new_image = Image(new_image)
+
+        if boxes is not None:
+            boxes = boxes.resize(new_image.size)
+
+        return new_image, boxes
+
+
 class RandomShortestSize(Transform):
     def __init__(
         self,
