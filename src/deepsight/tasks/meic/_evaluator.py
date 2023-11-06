@@ -142,13 +142,12 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     # ----------------------------------------------------------------------- #
 
     def _compute_meic_metrics(self, pred: Predictions, target: Predictions) -> None:
-        pred_bm = pred.interactions.int().to_dense()  # (N, H)
-        gt_bm = target.interactions.int().to_dense()  # (N, H')
-        self._adjusted_rand_index.update(pred_bm, gt_bm)
+        self._adjusted_rand_index.update(pred.interactions, target.interactions)
 
-        shared_nodes = pred_bm.t().mm(gt_bm)  # (H, H')
-        nodes_per_cluster = gt_bm.sum(dim=0, keepdim=True)  # (H', 1)
-        matched = shared_nodes.eq(nodes_per_cluster)  # (H, H')
+        shared_nodes = pred.interactions.float().T.mm(target.interactions.float())
+        shared_nodes = shared_nodes.int()  # (H, H')
+        nodes_per_cluster = target.interactions.sum(dim=0)  # (H')
+        matched = shared_nodes == nodes_per_cluster  # (H, H')
         self._jaccard_index.update(matched)
 
         pred_labels, gt_labels = _match_labels(
@@ -157,11 +156,11 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
         self._meic_metrics.update(pred_labels, gt_labels)
 
     def _compute_hoic_metrics(self, pred: Predictions, target: Predictions) -> None:
-        pred_indices = pred.binary_interactions  # (E, 2)
-        gt_indices = target.binary_interactions  # (E', 2)
+        pred_indices = pred.binary_interactions.unsqueeze(2)  # (2, E, 1)
+        gt_indices = target.binary_interactions.unsqueeze(1)  # (2, 1, E')
 
-        matched = pred_indices.unsqueeze(1) == gt_indices  #  (E, E', 2)
-        matched = matched.all(dim=2)  # (E, E')
+        matched = pred_indices == gt_indices  # (2, E, E')
+        matched = matched.all(dim=0)  # (E, E')
 
         pred_labels, gt_labels = _match_labels(
             pred.interaction_labels, target.interaction_labels, matched
@@ -198,7 +197,7 @@ class RandIndex(Metric):
         super().__init__()
 
         self.adjusted = adjusted
-        self.add_state("score", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("score", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
         self.score: Tensor
         self.total: Tensor

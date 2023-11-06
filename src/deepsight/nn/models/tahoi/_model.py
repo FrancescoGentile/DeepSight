@@ -25,7 +25,7 @@ from deepsight.typing import Configurable, JSONPrimitive
 from deepsight.utils.geometric import coalesce
 
 from ._decoder import Decoder
-from ._structures import HCStep, LayerOutput, Output
+from ._structures import GTClusters, HCStep, LayerOutput, Output
 
 
 @dataclass(frozen=True)
@@ -103,50 +103,64 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         images = BatchedImages.batch([sample.image.data for sample in samples])
         images = self.encoder(images)
         features = self.proj(images.data)
+        # just for testing
+        features[0] = -1
+        features[1] = 0
+        features[2] = 1
+
         images = images.replace(data=features)
 
         ccc, entity_boxes = self._create_decoder_input(samples, images)
-        layer_outputs = self.decoder(ccc, entity_boxes, images)
 
-        entity_labels = torch.cat([sample.entity_labels for sample in samples])
-        output = self._create_output(layer_outputs, entity_labels)
+        if annotations is not None:
+            gt_clusters = GTClusters.from_annotations(annotations)
+        else:
+            gt_clusters = None
+
+        layer_outputs = self.decoder(ccc, entity_boxes, images, gt_clusters)
+
+        output = self._create_output(
+            layer_outputs,
+            [sample.entity_labels for sample in samples],
+            gt_clusters,
+        )
 
         return output
 
     def postprocess(self, output: Output) -> Batch[Predictions]:
-        num_nodes = output[-1].num_nodes
-        num_edges = output[-1].num_edges
-        num_binary_edges = output[-1].num_binary_edges
-        logits = output[-1].interaction_logits
-        binary_logits = output[-1].binary_interaction_logits
-        bbm = output[-1].boundary_matrix.to_dense()
-        binary_interactions = output[-1].binary_interactions
+        num_nodes = output.layers[-1].num_nodes
+        num_hedges = output.layers[-1].num_hedges
+        num_binary_edges = output.layers[-1].num_binary_interactions
+        logits = output.layers[-1].interaction_logits
+        binary_logits = output.layers[-1].binary_interaction_logits
+        bbm = output.layers[-1].boundary_matrix.to_dense()
+        binary_interactions = output.layers[-1].binary_interactions
 
         labels = torch.sigmoid(logits)
-        binary_labels = labels[output[-1].binary_interactions[:, 2]]
-        binary_labels = torch.sigmoid(binary_logits) * binary_labels
+        binary_labels = labels[output.layers[-1].binary_interactions[2]]
+        binary_labels = torch.sigmoid(binary_logits).unsqueeze(1) * binary_labels
 
-        labels = labels.split_with_sizes(num_edges)
+        labels = labels.split_with_sizes(num_hedges)
         binary_labels = binary_labels.split_with_sizes(num_binary_edges)
 
         predictions: list[Predictions] = []
-        node_offset, edge_offset, binary_offset = 0, 0, 0
+        node_offset, hedge_offset, binary_offset = 0, 0, 0
         for idx in range(len(num_nodes)):
             node_limit = node_offset + num_nodes[idx]
-            edge_limit = edge_offset + num_edges[idx]
+            edge_limit = hedge_offset + num_hedges[idx]
             binary_limit = binary_offset + num_binary_edges[idx]
 
-            bm = bbm[node_offset:node_limit, edge_offset:edge_limit]
+            bm = bbm[node_offset:node_limit, hedge_offset:edge_limit]
 
-            bindices = binary_interactions[binary_offset:binary_limit]
-            bindices = bindices[:, :2] - node_offset
-            bindices = bindices.transpose(0, 1)
+            bindices = binary_interactions[:2, binary_offset:binary_limit] - node_offset
 
-            bindices, blabels = coalesce(bindices, binary_labels[idx], reduce="max")
-            bindices = bindices.transpose(0, 1)
+            if bindices.shape[1] > 0:
+                bindices, blabels = coalesce(bindices, binary_labels[idx], reduce="max")
+            else:
+                blabels = binary_labels[idx]
 
             node_offset = node_limit
-            edge_offset = edge_limit
+            hedge_offset = edge_limit
             binary_offset = binary_limit
 
             predictions.append(Predictions(bm, labels[idx], bindices, blabels))
@@ -213,8 +227,9 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
         edges = torch.combinations(entity_indices, r=2, with_replacement=False)
         edges = edges.transpose(0, 1)  # (2, E)
 
-        # remove edges where the first entity is not human
+        # remove edges where no entity is human
         keep = entity_labels[edges[0]] == self.human_class_id
+        keep = keep.logical_or_(entity_labels[edges[1]] == self.human_class_id)
         edges = edges[:, keep]
 
         # create boundary matrix
@@ -234,13 +249,14 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
     def _create_output(
         self,
         layer_outputs: list[tuple[CombinatorialComplex, list[HCStep]]],
-        entity_labels: Annotated[Tensor, "N", int],
+        entity_labels: list[Annotated[Tensor, "N", int]],
+        gt_clusters: GTClusters | None,
     ) -> Output:
-        outputs = []
+        layers = []
 
         for ccc, hc_output in layer_outputs:
             num_nodes = list(ccc.num_cells(0, BatchMode.SEQUENCE))
-            num_edges = list(ccc.num_cells(1, BatchMode.SEQUENCE))
+            num_hedges = list(ccc.num_cells(1, BatchMode.SEQUENCE))
 
             bm = ccc.boundary_matrix(1)  # (N, H)
             interaction_logits = self.mei_classifier(ccc.cell_features(1))
@@ -253,35 +269,42 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
                 .logical_and(dense_bm)
             )  # (N, N, H)
 
-            num_binary_edges = []
+            binary_interactions_list = []
             offset = 0
-            for nnodes in num_nodes:
-                limit = offset + nnodes
-                tmp = binary_interactions[offset:limit, offset:limit]
-                num_binary_edges.append(int(tmp.sum().item()))
+            for idx in range(len(num_nodes)):
+                limit = offset + num_nodes[idx]
+                sample_binary = binary_interactions[offset:limit, offset:limit]
+                sample_binary = sample_binary.nonzero(as_tuple=False)
 
-            binary_interactions = binary_interactions.nonzero(as_tuple=False)
+                # remove binary interactions where the first entity is not human
+                keep = entity_labels[idx][sample_binary[:, 0]] == self.human_class_id
+                sample_binary = sample_binary[keep]
 
-            # remove binary interactions where the first entity is not human
-            keep = entity_labels[binary_interactions[:, 0]] == self.human_class_id
-            binary_interactions = binary_interactions[keep]
+                # remove self interactions
+                keep = sample_binary[:, 0] != sample_binary[:, 1]
+                sample_binary = sample_binary[keep]
 
-            # remove self interactions
-            keep = binary_interactions[:, 0] != binary_interactions[:, 1]
-            binary_interactions = binary_interactions[keep]
+                sample_binary[:, :2] += offset
+                binary_interactions_list.append(sample_binary)
 
-            nodes1 = ccc.cell_features(0)[binary_interactions[:, 0]]
-            nodes2 = ccc.cell_features(0)[binary_interactions[:, 1]]
-            edge = ccc.cell_features(1)[binary_interactions[:, 2]]
+                offset = limit
+
+            num_binary_interactions = [len(edges) for edges in binary_interactions_list]
+            binary_interactions = torch.cat(binary_interactions_list, dim=0)
+            binary_interactions.transpose_(0, 1)  # (3, E)
+
+            nodes1 = ccc.cell_features(0)[binary_interactions[0]]
+            nodes2 = ccc.cell_features(0)[binary_interactions[1]]
+            edge = ccc.cell_features(1)[binary_interactions[2]]
             binary = torch.cat([nodes1, nodes2, edge], dim=1)  # (E, 3C)
             binary_logits = self.binary_classifier(binary).squeeze(1)  # (E,)
 
-            outputs.append(
+            layers.append(
                 LayerOutput(
                     steps=hc_output,
                     num_nodes=num_nodes,
-                    num_edges=num_edges,
-                    num_binary_edges=num_binary_edges,
+                    num_hedges=num_hedges,
+                    num_binary_interactions=num_binary_interactions,
                     boundary_matrix=bm,
                     interaction_logits=interaction_logits,
                     binary_interactions=binary_interactions,
@@ -289,4 +312,4 @@ class TAHOI(DeepSightModel[Sample, Output, Annotations, Predictions], Configurab
                 )
             )
 
-        return outputs
+        return Output(layers, gt_clusters)

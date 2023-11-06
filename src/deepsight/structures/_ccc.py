@@ -65,9 +65,7 @@ class CombinatorialComplex:
         if boundary_matrices_sizes is not None:
             boundary_matrices_sizes = tuple(boundary_matrices_sizes)
         else:
-            boundary_matrices_sizes = tuple(
-                (bm.values().shape[0],) for bm in boundary_matrices
-            )
+            boundary_matrices_sizes = tuple((bm._nnz(),) for bm in boundary_matrices)
 
         _check_tensors(
             cell_features, boundary_matrices, num_cells, boundary_matrices_sizes
@@ -141,12 +139,15 @@ class CombinatorialComplex:
 
             boundary_matrices.append(
                 torch.sparse_coo_tensor(
-                    indices, values, size=(r_minus_1_cell_offset, r_cell_offset)
+                    indices,
+                    values,
+                    size=(r_minus_1_cell_offset, r_cell_offset),
+                    is_coalesced=True,
                 )
             )
             boundary_matrices_sizes.append(tuple(bm_sizes))
 
-        return cls(cell_features, boundary_matrices, num_cells)
+        return cls(cell_features, boundary_matrices, num_cells, boundary_matrices_sizes)
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -616,7 +617,12 @@ class CombinatorialComplex:
 
             cell_features[rank] = cell_feature
 
-        return CombinatorialComplex(cell_features, self._boundary_matrices)
+        return self.__class__(
+            cell_features,
+            self._boundary_matrices,
+            self._num_cells,
+            self._boundary_matrices_sizes,
+        )
 
     def unbatch(self) -> Iterable[Self]:
         """Unbatch the combinatorial complex into a sequence of complexes.
@@ -646,7 +652,7 @@ class CombinatorialComplex:
                 boundary_matrices[idx].append(bm[idx])
 
         return (
-            CombinatorialComplex(cf, bm)
+            self.__class__(cf, bm)
             for cf, bm in zip(cell_features, boundary_matrices, strict=True)
         )
 
@@ -727,12 +733,23 @@ def _check_tensors(  # noqa
                 f"{boundary_matrix.shape}."
             )
 
-        if boundary_matrix.values().shape[0] != sum(bm_sizes):
+        if boundary_matrix._nnz() != sum(bm_sizes):
             raise ValueError(
                 f"Expected the number of non-zero entries in the boundary "
                 f"matrix B_{r_minus_1 + 1} to be {sum(bm_sizes)}, got "
-                f"{boundary_matrix.values().shape[0]}."
+                f"{boundary_matrix._nnz()}."
             )
+
+    if any(len(num_cells[0]) != len(nc) for nc in num_cells):
+        raise ValueError("Inconsistent number of batches.")
+
+    if any(
+        len(boundary_matrices_sizes[0]) != len(bm) for bm in boundary_matrices_sizes
+    ):
+        raise ValueError("Inconsistent number of batches.")
+
+    if len(num_cells[0]) != len(boundary_matrices_sizes[0]):
+        raise ValueError("Inconsistent number of batches.")
 
     # for nc, bm in zip(num_cells, boundary_matrices_sizes, strict=True):
     #     if len(nc) != len(bm):

@@ -14,7 +14,7 @@ from deepsight.nn.models import Criterion as _Criterion
 from deepsight.structures import Batch
 from deepsight.tasks.meic import Annotations
 
-from ._structures import HCStep, Output
+from ._structures import GTClusters, HCStep, Output
 
 
 class Criterion(_Criterion[Output, Annotations]):
@@ -85,35 +85,56 @@ class Criterion(_Criterion[Output, Annotations]):
         annotations: Batch[Annotations],
     ) -> dict[str, Tensor]:
         losses = {}
-        gt_num_edges = [ann.interactions.shape[1] for ann in annotations]
-        batched_bm, batched_labels, batched_binary = _batch(annotations)
-        batched_adj = torch.mm(batched_bm, batched_bm.T)  # (N, N)
-        batched_adj.clamp_(max=1)
+        gt_num_hedges = [ann.interactions.size(1) for ann in annotations]
+        batched_labels = torch.cat([ann.interaction_labels for ann in annotations])
+        batched_binary = []
+        node_offset, hedge_offset = 0, 0
+        for ann in annotations:
+            first_entity = ann.binary_interactions[0] + node_offset
+            second_entity = ann.binary_interactions[1] + node_offset
+            cluster = ann.binary_interactions[2] + hedge_offset
+
+            binary = torch.stack([first_entity, second_entity, cluster], dim=0)
+            batched_binary.append(binary)
+
+            node_offset += ann.interactions.size(0)
+            hedge_offset += ann.interactions.size(1)
+
+        batched_binary = torch.cat(batched_binary, dim=1)
+
+        if output.gt_clusters is not None:
+            gt_clusters = output.gt_clusters
+        else:
+            gt_clusters = GTClusters.from_annotations(annotations)
 
         for layer_idx in self.layer_indices:
-            indices = self._compute_assignment(
-                pred_bbm=output[layer_idx].boundary_matrix,
-                gt_bbm=batched_bm,
-                pred_labels=output[layer_idx].interaction_logits,
+            batched_indices = self._compute_assignment(
+                pred_bbm=output.layers[layer_idx].boundary_matrix.float(),
+                gt_bbm=gt_clusters.boundary_matrix,
+                pred_labels=output.layers[layer_idx].interaction_logits,
                 gt_labels=batched_labels,
-                pred_num_edges=output[layer_idx].num_edges,
-                gt_num_edges=gt_num_edges,
+                pred_num_hedges=output.layers[layer_idx].num_hedges,
+                gt_num_hedges=gt_num_hedges,
             )
-            batched_indices = self._batch_indices(
-                indices, output[layer_idx].num_edges, gt_num_edges
-            )
+
             bce_indices = self._compute_bce_indices(
-                batched_indices, output[layer_idx].binary_interactions, batched_binary
+                batched_indices,
+                output.layers[layer_idx].binary_interactions,
+                batched_binary,
             )
 
             losses[f"focal_loss_{layer_idx}"] = self._compute_focal_loss(
-                batched_indices, output[layer_idx].interaction_logits, batched_labels
+                batched_indices,
+                output.layers[layer_idx].interaction_logits,
+                batched_labels,
             )
+
             losses[f"bce_loss_{layer_idx}"] = self._compute_bce_loss(
-                bce_indices, output[layer_idx].binary_interaction_logits, batched_binary
+                bce_indices, output.layers[layer_idx].binary_interaction_logits
             )
+
             losses[f"hc_loss_{layer_idx}"] = self._compute_hc_loss(
-                batched_adj, batched_bm, output[layer_idx].steps
+                gt_clusters, output.layers[layer_idx].steps
             )
 
         return losses
@@ -126,12 +147,12 @@ class Criterion(_Criterion[Output, Annotations]):
     def _compute_assignment(
         self,
         pred_bbm: Annotated[Tensor, "N H", int, torch.sparse_coo],
-        gt_bbm: Annotated[Tensor, "N H'", int, torch.sparse_coo],
+        gt_bbm: Annotated[Tensor, "N H'", float, torch.sparse_coo],
         pred_labels: Annotated[Tensor, "H C", float],
         gt_labels: Annotated[Tensor, "H' C", float],
-        pred_num_edges: list[int],
-        gt_num_edges: list[int],
-    ) -> list[tuple[Tensor, Tensor]]:
+        pred_num_hedges: list[int],
+        gt_num_hedges: list[int],
+    ) -> tuple[Annotated[Tensor, "I", int], Annotated[Tensor, "I", int]]:
         # Compute jaccard index
         intersection = torch.mm(pred_bbm.T, gt_bbm).to_dense()  # (H, H')
         pred_num_nodes = torch.sparse.sum(pred_bbm, dim=0).to_dense()  # (H,)
@@ -148,41 +169,28 @@ class Criterion(_Criterion[Output, Annotations]):
             + self.similarity_weight * similarity.neg_()
         )
 
-        sample_costs = []
+        pred_indices, gt_indices = [], []
         pred_offset, gt_offset = 0, 0
-        for pred_nedges, gt_nedges in zip(pred_num_edges, gt_num_edges, strict=True):
-            pred_limit = pred_offset + pred_nedges
-            gt_limit = gt_offset + gt_nedges
-            sample_cost = cost[pred_offset:pred_limit, gt_offset:gt_limit]
-            sample_costs.append(sample_cost.cpu())
+        for pred_nhedges, gt_nhedges in zip(
+            pred_num_hedges, gt_num_hedges, strict=True
+        ):
+            pred_limit = pred_offset + pred_nhedges
+            gt_limit = gt_offset + gt_nhedges
+            sample_cost = cost[pred_offset:pred_limit, gt_offset:gt_limit].cpu()
+            i, j = linear_sum_assignment(sample_cost)
+            i = torch.as_tensor(i, device=pred_bbm.device) + pred_offset
+            j = torch.as_tensor(j, device=pred_bbm.device) + gt_offset
+            pred_indices.append(i)
+            gt_indices.append(j)
 
             pred_offset = pred_limit
             gt_offset = gt_limit
-
-        indices = [linear_sum_assignment(cost) for cost in sample_costs]
-        return [(torch.as_tensor(i), torch.as_tensor(j)) for i, j in indices]
-
-    def _batch_indices(
-        self,
-        indices: list[tuple[Tensor, Tensor]],
-        pred_num_edges: list[int],
-        gt_num_edges: list[int],
-    ) -> tuple[Tensor, Tensor]:
-        pred_offset, gt_offset = 0, 0
-        pred_indices, gt_indices = [], []
-
-        for idx, (i, j) in enumerate(indices):
-            pred_indices.append(i.add_(pred_offset))
-            gt_indices.append(j.add_(gt_offset))
-
-            pred_offset += pred_num_edges[idx]
-            gt_offset += gt_num_edges[idx]
 
         return torch.cat(pred_indices), torch.cat(gt_indices)
 
     def _compute_focal_loss(
         self,
-        indices: tuple[Tensor, Tensor],
+        indices: tuple[Annotated[Tensor, "I", int], Annotated[Tensor, "I", int]],
         logits: Annotated[Tensor, "H C", float],
         gt_labels: Annotated[Tensor, "H' C", float],
     ) -> Annotated[Tensor, "", float]:
@@ -206,62 +214,46 @@ class Criterion(_Criterion[Output, Annotations]):
 
     def _compute_bce_indices(
         self,
-        indices: tuple[Tensor, Tensor],  # (K,)
-        pred_binary: Annotated[Tensor, "E 3", int],
-        gt_binary: Annotated[Tensor, "E' 3", int],
-    ) -> tuple[Tensor, Tensor]:
-        pred_cluster_indices = pred_binary[:, 2]  # (E,)
-        matched = pred_cluster_indices.unsqueeze(1) == indices[0]  # (E, K)
+        indices: tuple[Annotated[Tensor, "I", int], Annotated[Tensor, "I", int]],
+        pred_binary: Annotated[Tensor, "3 E", int],
+        gt_binary: Annotated[Tensor, "3 E'", int],
+    ) -> tuple[Annotated[Tensor, "I'", int], Annotated[Tensor, "I'", int]]:
+        pred_cluster_indices = pred_binary[2]  # (E,)
+        matched = pred_cluster_indices.unsqueeze(1) == indices[0]  # (E, I)
         matched_indices = matched.nonzero(as_tuple=True)  # (M,)
 
-        pred_gt_cluster_indices = indices[1][matched_indices[1]]  # (M,)
-        pred_entity_indices = pred_binary[:2][matched_indices[0]]  # (M, 2)
-        pred_binary = torch.cat([pred_entity_indices, pred_gt_cluster_indices], dim=1)
+        pred_gt_cluster_indices = indices[1][matched_indices[1]].unsqueeze_(0)  # (1, M)
+        pred_entity_indices = pred_binary[:2, matched_indices[0]]  # (2, M)
+        pred_binary = torch.cat([pred_entity_indices, pred_gt_cluster_indices], dim=0)
 
-        matched2 = pred_binary.unsqueeze(1) == gt_binary.unsqueeze(0)  # (M, E', 3)
-        matched2 = matched2.all(dim=2)  # (M, E')
+        pred_binary = pred_binary.unsqueeze_(2)  # (3, M, 1)
+        gt_binary = gt_binary.unsqueeze(1)  # (3, 1, E')
+        matched2 = pred_binary == gt_binary  # (3, M, E')
+        matched2 = matched2.all(dim=0)  # (M, E')
         matched2_indices = matched2.nonzero(as_tuple=True)  # (M',)
 
         return matched_indices[0][matched2_indices[0]], matched2_indices[1]
 
     def _compute_bce_loss(
-        self,
-        indices: tuple[Tensor, Tensor],
-        logits: Annotated[Tensor, "E", float],
-        gt_labels: Annotated[Tensor, "E'", float],
+        self, indices: tuple[Tensor, Tensor], logits: Annotated[Tensor, "E", float]
     ) -> Annotated[Tensor, "", float]:
         targets = torch.zeros_like(logits)
-        targets[indices[0]].copy_(gt_labels[indices[1]])
+        targets[indices[0]] = 1.0
 
         loss = F.binary_cross_entropy_with_logits(logits, targets, reduction="mean")
         return loss * self.bce_loss_weight
 
     def _compute_hc_loss(
-        self,
-        adj: Annotated[Tensor, "N N", int, torch.sparse_coo],
-        boundary_matrix: Annotated[Tensor, "N H", int, torch.sparse_coo],
-        steps: list[HCStep],
+        self, gt_clusters: GTClusters, steps: list[HCStep]
     ) -> Annotated[Tensor, "", float]:
         total_loss = 0.0
-        nodes_per_edge = torch.sparse.sum(boundary_matrix, dim=0).to_dense()  # (H,)
-        for idx, step in enumerate(steps):
-            if idx == 0:
-                target = adj.to_dense()
+        for step in steps:
+            if step.target_similarity_matrix is not None:
+                target = step.target_similarity_matrix
             else:
-                cbm = steps[idx - 1].coboundary_matrix  # (M, N)
-                assert cbm is not None
-                target = cbm.mm(adj).mm(cbm.T)  # (M, M)
-                target.clamp_(max=1).to_dense()
-
-                shared_nodes = cbm.mm(boundary_matrix).to_dense()  # (M, H)
-                has_all_nodes = shared_nodes == nodes_per_edge.unsqueeze(0)  # (M, H)
-                has_all_nodes = has_all_nodes.any(dim=1, keepdim=True)  # (M, 1)
-                has_all_nodes = has_all_nodes.expand_as(target)  # (M, M)
-                # If an edge already has all the nodes, it should not be merged with
-                # any other edge.
-                target.masked_fill_(has_all_nodes, 0)
-
-            target[target == 0] = -1
+                target = gt_clusters.compute_target_similarity_matrix(
+                    step.coboundary_matrix
+                )
 
             loss = torch.sigmoid(step.similarity_matrix * target)
             loss = -loss.masked_select(~step.mask).mean()
@@ -289,34 +281,3 @@ class Criterion(_Criterion[Output, Annotations]):
 # cost is a weighted sum of the two costs. Then, hungarian-matching is used to find
 # the optimal assignment.
 # Once the optimal assignment is found, we can compute the focal loss.
-
-
-def _batch(
-    annotations: Batch[Annotations]
-) -> tuple[
-    Annotated[Tensor, "N H", int, torch.sparse_coo],
-    Annotated[Tensor, "H C", float],
-    Annotated[Tensor, "E 3", int],
-]:
-    total_nodes = sum(ann.interactions.shape[0] for ann in annotations)
-    total_edges = sum(ann.interactions.shape[1] for ann in annotations)
-
-    bm = torch.zeros(
-        (total_nodes, total_edges), dtype=torch.bool, device=annotations.device
-    )
-
-    node_offset = 0
-    edge_offset = 0
-    for ann in annotations:
-        node_limit = node_offset + ann.interactions.shape[0]
-        edge_limit = edge_offset + ann.interactions.shape[1]
-        bm[node_offset:node_limit, edge_offset:edge_limit].copy_(ann.interactions)
-
-    bm = bm.to_sparse().int()
-
-    labels = torch.cat([ann.interaction_labels for ann in annotations], dim=0)
-    labels = labels.float()
-
-    binary = torch.cat([ann.binary_interactions for ann in annotations], dim=0)
-
-    return bm, labels, binary

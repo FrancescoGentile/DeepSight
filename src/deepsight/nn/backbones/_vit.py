@@ -163,7 +163,7 @@ class ViTEncoder(nn.Module):
         x_embed = self._add_pos_embeds(x)
         if isinstance(x_embed, BatchedSequences):
             out = x_embed.data
-            mask = x_embed.mask
+            mask = x_embed.mask[:, None, None]  # (B, 1, 1, (1) + hw)
         else:
             out = x_embed
             mask = None

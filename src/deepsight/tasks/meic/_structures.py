@@ -59,7 +59,7 @@ class Annotations(Moveable):
             interaction can be of multiple classes (thus, the sum of the probabilities
             of each interaction can be greater than 1.0).
         binary_interactions: The ground-truth human-object and human-human interactions.
-            This is a tensor of shape `(E, 3)` where `E` is the number of interactions.
+            This is a tensor of shape `(3, E)` where `E` is the number of interactions.
             Each row of this tensor is a triplet `(i, j, k)` where `i` is the index of
             the human entity, `j` is the index of the target entity (human or object),
             and `k` is the index of the multi-entity interaction that involves both
@@ -68,7 +68,7 @@ class Annotations(Moveable):
 
     interactions: Annotated[Tensor, "N H", bool]
     interaction_labels: Annotated[Tensor, "H C", float]
-    binary_interactions: Annotated[Tensor, "E 3", bool]
+    binary_interactions: Annotated[Tensor, "3 E", bool]
 
     @property
     def device(self) -> torch.device:
@@ -105,7 +105,7 @@ class Predictions(Moveable):
             interaction can be of multiple classes (thus, the sum of the probabilities
             of each interaction can be greater than 1.0).
         binary_interactions: The ground-truth human-object and human-human interactions.
-            This is a tensor of shape `(E, 2)` where `E` is the number of interactions.
+            This is a tensor of shape `(2, E)` where `E` is the number of interactions.
             Each row of this tensor is a pair `(i, j)` where `i` is the index of the
             human entity and `j` is the index of the target entity (human or object).
         binary_interaction_labels: The probabilities of the binary interactions. The
@@ -119,7 +119,7 @@ class Predictions(Moveable):
 
     interactions: Annotated[Tensor, "N H", bool]
     interaction_labels: Annotated[Tensor, "H C", float]
-    binary_interactions: Annotated[Tensor, "E 2", bool]
+    binary_interactions: Annotated[Tensor, "2 E", int]
     binary_interaction_labels: Annotated[Tensor, "E C", float]
 
     @property

@@ -146,16 +146,15 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
                 binary_interactions.append((i, j, idx))
 
         if len(binary_interactions) > 0:
-            binary_interactions = torch.as_tensor(binary_interactions)
+            binary_interactions = torch.as_tensor(binary_interactions).transpose_(0, 1)
             binary_indices, binary_labels = coalesce(
-                indices=binary_interactions[:, :2].transpose(0, 1),
+                indices=binary_interactions[:2],
                 values=interaction_labels,
                 reduce="max",
             )
-            binary_indices = binary_indices.transpose(0, 1)
         else:
-            binary_interactions = torch.empty((0, 3), dtype=torch.long)
-            binary_indices = torch.empty((0, 2), dtype=torch.long)
+            binary_interactions = torch.empty((3, 0), dtype=torch.long)
+            binary_indices = torch.empty((2, 0), dtype=torch.long)
             binary_labels = torch.zeros(
                 (0, self.num_interaction_classes), dtype=torch.float
             )

@@ -2,6 +2,7 @@
 ##
 ##
 
+import random
 from collections.abc import Iterable
 from numbers import Number
 from typing import Annotated
@@ -24,7 +25,7 @@ from deepsight.utils.geometric import (
     scatter_sum,
 )
 
-from ._structures import HCStep
+from ._structures import GTClusters, HCStep
 
 
 class IntraRankAttention(nn.Module):
@@ -332,7 +333,8 @@ class HyperGraphStructureLearning(nn.Module):
         bias: bool = True,
         attn_dropout: float = 0.0,
         proj_dropout: float = 0.0,
-        similarity_threshold: float = 0.0,
+        similarity_threshold: float = 0.5,
+        teacher_forcing: float = 1.0,
     ) -> None:
         super().__init__()
 
@@ -342,7 +344,13 @@ class HyperGraphStructureLearning(nn.Module):
                 f"range [-1, 1]."
             )
 
+        if not 0 <= teacher_forcing <= 1:
+            raise ValueError(
+                f"teacher_forcing ({teacher_forcing}) must be in the range [0, 1]."
+            )
+
         self.similarity_threshold = similarity_threshold
+        self.teacher_forcing = teacher_forcing
 
         self.node_layernorm = nn.LayerNorm(embed_dim)
         self.edge_layernorm = nn.LayerNorm(embed_dim)
@@ -368,10 +376,15 @@ class HyperGraphStructureLearning(nn.Module):
         self.out_edge_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
     def forward(
-        self, ccc: CombinatorialComplex
+        self,
+        ccc: CombinatorialComplex,
+        gt_clusters: GTClusters | None,
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
-        nodes_norm = self.node_layernorm(ccc.cell_features(0))
-        edges_norm = self.edge_layernorm(ccc.cell_features(1))
+        # nodes_norm = self.node_layernorm(ccc.cell_features(0))
+        # edges_norm = self.edge_layernorm(ccc.cell_features(1))
+        # just for testing
+        nodes_norm = ccc.cell_features(0)
+        edges_norm = ccc.cell_features(1)
 
         node_to_node = self.node_to_node_attn(
             cell_features=nodes_norm,
@@ -389,14 +402,16 @@ class HyperGraphStructureLearning(nn.Module):
         nodes = self.node_proj(nodes)  # (N, D)
 
         num_nodes = tuple(ccc.num_cells(0, BatchMode.SEQUENCE))
-        coboundary_matrix, hc_output = self._create_coboundary_matrix(nodes, num_nodes)
+        coboundary_matrix, hc_output = self._create_coboundary_matrix(
+            nodes, num_nodes, gt_clusters
+        )
 
         # The features of the new hyperedges are the average of the features of the
         # nodes that belong to them. As node features, we do not use the output of the
         # structure learning layer, but the original features of the nodes.
         nodes = ccc.cell_features(0)  # (N, D)
         edge_degree = coboundary_matrix.sum(-1, keepdim=True)  # (M, 1)
-        edges = torch.mm(coboundary_matrix.to(nodes.dtype), nodes)  # (M, D)
+        edges = torch.mm(coboundary_matrix, nodes)  # (M, D)
         edges = edges / edge_degree
         edges = self.out_edge_proj(edges)
 
@@ -440,7 +455,10 @@ class HyperGraphStructureLearning(nn.Module):
         return new_ccc, hc_output
 
     def _create_coboundary_matrix(
-        self, nodes: Annotated[Tensor, "N D", float], num_cells: Iterable[int]
+        self,
+        nodes: Annotated[Tensor, "N D", float],
+        num_cells: Iterable[int],
+        gt_clusters: GTClusters | None,
     ) -> tuple[Annotated[Tensor, "M N", bool], list[HCStep]]:
         hc_output = []
         nodes = F.normalize(nodes, dim=-1)
@@ -457,13 +475,22 @@ class HyperGraphStructureLearning(nn.Module):
             node_offset = node_limit
         mask_float = mask.float()
 
-        similarity = nodes.mm(nodes.T)
         # We set the diagonal and the lower triangular part of the similarity matrix to
         # False to avoid merging a cluster with itself or merging two clusters more than
         # once.
         mask_indices = torch.tril_indices(*mask.shape)
         mask[mask_indices[0], mask_indices[1]] = True
-        merge = (similarity > self.similarity_threshold).masked_fill_(mask, False)
+
+        pred_similarity = nodes.mm(nodes.T)
+        if random.random() < self.teacher_forcing and gt_clusters is not None:
+            tgt_similarity = gt_clusters.compute_target_similarity_matrix(None)
+            similarity = tgt_similarity
+        else:
+            tgt_similarity = None
+            similarity = pred_similarity
+
+        merge = similarity > self.similarity_threshold
+        merge = merge.masked_fill_(mask, False)
         merge_indices = merge.nonzero(as_tuple=False)
 
         coboundary_matrix = torch.zeros(
@@ -476,11 +503,11 @@ class HyperGraphStructureLearning(nn.Module):
         coboundary_matrix[cluster_indices, merge_indices[:, 1]] = 1.0
 
         if len(merge_indices) == 0:
-            step = HCStep(similarity, mask, None)
+            step = HCStep(pred_similarity, tgt_similarity, mask, None)
             hc_output.append(step)
             return coboundary_matrix, hc_output
 
-        step = HCStep(similarity, mask, coboundary_matrix)
+        step = HCStep(pred_similarity, tgt_similarity, mask, coboundary_matrix)
         hc_output.append(step)
 
         while True:
@@ -494,13 +521,22 @@ class HyperGraphStructureLearning(nn.Module):
             mask_indices = torch.tril_indices(*clusters_mask.shape)
             clusters_mask[mask_indices[0], mask_indices[1]] = True
 
-            similarity = clusters.mm(clusters.T)
+            pred_similarity = clusters.mm(clusters.T)
+            if random.random() < self.teacher_forcing and gt_clusters is not None:
+                tgt_similarity = gt_clusters.compute_target_similarity_matrix(
+                    coboundary_matrix
+                )
+                similarity = tgt_similarity
+            else:
+                tgt_similarity = None
+                similarity = pred_similarity
+
             merge = similarity > self.similarity_threshold
             merge = merge.masked_fill_(clusters_mask, False)
             merge_indices = merge.nonzero(as_tuple=False)
 
             if len(merge_indices) == 0:
-                step = HCStep(similarity, clusters_mask, None)
+                step = HCStep(pred_similarity, tgt_similarity, clusters_mask, None)
                 hc_output.append(step)
                 return coboundary_matrix, hc_output
 
@@ -548,13 +584,17 @@ class HyperGraphStructureLearning(nn.Module):
             # order of the rows.
             coboundary_matrix = coboundary_matrix.flip(0)
 
-            step = HCStep(similarity, clusters_mask, coboundary_matrix)
+            step = HCStep(
+                pred_similarity, tgt_similarity, clusters_mask, coboundary_matrix
+            )
             hc_output.append(step)
 
     def __call__(
-        self, ccc: CombinatorialComplex
+        self,
+        ccc: CombinatorialComplex,
+        gt_clusters: GTClusters | None,
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
-        return super().__call__(ccc)
+        return super().__call__(ccc, gt_clusters)
 
 
 class CrossAttention(nn.Module):
@@ -714,9 +754,10 @@ class DecoderLayer(nn.Module):
         ccc: CombinatorialComplex,
         images: BatchedSequences,
         relative_distances: Annotated[Tensor, "B N L 2"],
+        gt_clusters: GTClusters | None,
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
         # Structure learning
-        ccc, hc_output = self.structure_learning(ccc)
+        ccc, hc_output = self.structure_learning(ccc, gt_clusters)
         nodes, edges = ccc.cell_features(0), ccc.cell_features(1)
 
         # Hypergraph attention
@@ -749,8 +790,9 @@ class DecoderLayer(nn.Module):
         ccc: CombinatorialComplex,
         images: BatchedSequences,
         relative_distances: Annotated[Tensor, "B N L 2"],
+        gt_clusters: GTClusters | None,
     ) -> tuple[CombinatorialComplex, list[HCStep]]:
-        return super().__call__(ccc, images, relative_distances)
+        return super().__call__(ccc, images, relative_distances, gt_clusters)
 
 
 class Decoder(nn.Module):
@@ -797,13 +839,14 @@ class Decoder(nn.Module):
         ccc: CombinatorialComplex,
         boxes: BatchedBoundingBoxes,
         images: BatchedImages,
+        gt_clusters: GTClusters | None,
     ) -> list[tuple[CombinatorialComplex, list[HCStep]]]:
         relative_distances = _compute_relative_distances(boxes, images)
         patches = images.to_sequences()
 
         outputs = []
         for layer in self.layers:
-            ccc, hc_output = layer(ccc, patches, relative_distances)
+            ccc, hc_output = layer(ccc, patches, relative_distances, gt_clusters)
             outputs.append((ccc, hc_output))
 
         return outputs
@@ -813,8 +856,9 @@ class Decoder(nn.Module):
         ccc: CombinatorialComplex,
         boxes: BatchedBoundingBoxes,
         images: BatchedImages,
+        gt_clusters: GTClusters | None,
     ) -> list[tuple[CombinatorialComplex, list[HCStep]]]:
-        return super().__call__(ccc, boxes, images)
+        return super().__call__(ccc, boxes, images, gt_clusters)
 
 
 # --------------------------------------------------------------------------- #
