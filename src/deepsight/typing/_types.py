@@ -2,16 +2,32 @@
 ##
 ##
 
-number = bool | float | int
+import os
+import pathlib
+from typing import Annotated, Any, Literal, LiteralString
 
+import torch
 
-JSONPrimitive = (
-    bool
-    | int
-    | float
-    | str
-    | None
-    | dict[str, "JSONPrimitive"]
-    | list["JSONPrimitive"]
-    | tuple["JSONPrimitive"]
-)
+type Number = bool | float | int
+"""Union of all types that can be used to represent a number."""
+
+type PathLike = str | os.PathLike[str] | pathlib.Path
+"""Union of all types that can be used to represent a path."""
+
+type Tensor[S: LiteralString, DT] = Annotated[torch.Tensor, S, DT]
+"""A tensor with an annotated shape and dtype."""
+
+type SparseTensor[S: LiteralString, DT] = Annotated[torch.Tensor, S, DT]
+"""A sparse tensor with an annotated shape and dtype."""
+
+type Loss = Tensor[Literal[""], float]
+"""A loss is a scalar float tensor."""
+
+type Losses = dict[str, Loss]
+"""A mapping from loss names to losses."""
+
+type Configs = dict[str, Any]
+"""A dictionary of configuration values."""
+
+type StateDict = dict[str, Any]
+"""A dictionary of state values."""

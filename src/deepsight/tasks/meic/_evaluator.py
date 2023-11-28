@@ -2,7 +2,6 @@
 ##
 ##
 
-from collections.abc import Iterable
 from typing import Annotated, Any
 
 import sklearn.metrics
@@ -17,15 +16,13 @@ from torchmetrics.classification import (
 )
 from typing_extensions import Self
 
-from deepsight.structures import Batch
-from deepsight.tasks import Evaluator as _Evaluator
-from deepsight.tasks import MetricType
+from deepsight.core import Batch, Evaluator, MetricInfo
 from deepsight.typing import Moveable, Stateful
 
 from ._structures import Predictions
 
 
-class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
+class Evaluator(Evaluator[Predictions], Moveable, Stateful):
     """Evaluator for the Multi-Entity Interaction Classification task."""
 
     def __init__(self, num_interaction_classes: int) -> None:
@@ -72,27 +69,26 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     # ----------------------------------------------------------------------- #
 
     @property
-    def metrics(self) -> Iterable[tuple[str, MetricType]]:
-        return [
-            ("jaccard_index", MetricType.NUMERIC),
-            ("adjusted_rand_index", MetricType.NUMERIC),
-            ("meic_accuracy", MetricType.NUMERIC),
-            ("meic_precision", MetricType.NUMERIC),
-            ("meic_recall", MetricType.NUMERIC),
-            ("meic_f1score", MetricType.NUMERIC),
-            ("hoic_accuracy", MetricType.NUMERIC),
-            ("hoic_precision", MetricType.NUMERIC),
-            ("hoic_recall", MetricType.NUMERIC),
-            ("hoic_f1score", MetricType.NUMERIC),
-        ]
-
-    @property
     def device(self) -> torch.device:
         return self._jaccard_index.device
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
+
+    def get_metrics_info(self) -> tuple[MetricInfo, ...]:
+        return (
+            MetricInfo(name="jaccard_index", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="adjusted_rand_index", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="meic_accuracy", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="meic_precision", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="meic_recall", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="meic_f1score", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="hoic_accuracy", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="hoic_precision", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="hoic_recall", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="hoic_f1score", type=MetricInfo.Type.NUMERIC),
+        )
 
     def update(
         self, predictions: Batch[Predictions], ground_truth: Batch[Predictions]
@@ -115,7 +111,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
         self._meic_metrics.reset()
         self._hoic_metrics.reset()
 
-    def move(self, device: torch.device, non_blocking: bool = False) -> Self:
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         self._jaccard_index.to(device, non_blocking=non_blocking)
         self._adjusted_rand_index.to(device, non_blocking=non_blocking)
         self._meic_metrics.to(device, non_blocking=non_blocking)
@@ -123,7 +119,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
 
         return self
 
-    def get_state(self) -> dict[str, Any]:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "jaccard_index": self._jaccard_index.state_dict(),
             "adjusted_rand_index": self._adjusted_rand_index.state_dict(),
@@ -131,11 +127,11 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
             "hoic_metrics": self._hoic_metrics.state_dict(),
         }
 
-    def set_state(self, state: dict[str, Any]) -> None:
-        self._jaccard_index.load_state_dict(state["jaccard_index"])
-        self._adjusted_rand_index.load_state_dict(state["adjusted_rand_index"])
-        self._meic_metrics.load_state_dict(state["meic_metrics"])
-        self._hoic_metrics.load_state_dict(state["hoic_metrics"])
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
+        self._jaccard_index.load_state_dict(state_dict["jaccard_index"])
+        self._adjusted_rand_index.load_state_dict(state_dict["adjusted_rand_index"])
+        self._meic_metrics.load_state_dict(state_dict["meic_metrics"])
+        self._hoic_metrics.load_state_dict(state_dict["hoic_metrics"])
 
     # ----------------------------------------------------------------------- #
     # Private Methods

@@ -8,7 +8,7 @@ from typing import Any, Protocol
 import torch
 from typing_extensions import Self
 
-from ._types import JSONPrimitive
+from ._types import Configs, StateDict
 
 
 @typing.runtime_checkable
@@ -20,7 +20,7 @@ class Moveable(Protocol):
         """The device this object is on."""
         ...
 
-    def move(self, device: torch.device, non_blocking: bool = False) -> Self:
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         """Move this object to the given device.
 
         !!! note
@@ -42,7 +42,7 @@ class Moveable(Protocol):
 class Configurable(Protocol):
     """An interface for objects that can be configured."""
 
-    def get_config(self) -> JSONPrimitive:
+    def get_configs(self) -> Configs:
         """Get the configuration of this object."""
         ...
 
@@ -51,10 +51,19 @@ class Configurable(Protocol):
 class Stateful(Protocol):
     """An interface for objects that have a state."""
 
-    def get_state(self) -> dict[str, Any]:
+    def state_dict(self) -> StateDict:
         """Get the state of this object."""
         ...
 
-    def set_state(self, state: dict[str, Any]) -> None:
-        """Set the state of this object."""
+    def load_state_dict(self, state_dict: StateDict) -> Any:
+        """Load the state of this object."""
+        ...
+
+
+@typing.runtime_checkable
+class Detachable(Protocol):
+    """An interface for objects that can be detached from the computation graph."""
+
+    def detach(self) -> Self:
+        """Detach this object from the computation graph."""
         ...

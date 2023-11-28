@@ -5,13 +5,13 @@
 """Multi-Entity Interaction Classification task."""
 
 from ._evaluator import Evaluator
-from ._h2o_dataset import H2ODataset
 from ._structures import Annotations, Predictions, Sample
 
 __all__ = [
-    "Annotations",
+    # _evaluator
     "Evaluator",
-    "H2ODataset",
+    # _structures
+    "Annotations",
     "Predictions",
     "Sample",
 ]

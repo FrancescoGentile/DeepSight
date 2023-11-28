@@ -4,20 +4,19 @@
 
 """Decorators for type checking."""
 
-from enum import Enum
-from typing import Type, TypeVar
-
-T = TypeVar("T", bound=Enum)
+import enum
+from typing import Type
 
 
-def str_enum(cls: Type[T]) -> Type[T]:
+def str_enum[T: enum.Enum](cls: Type[T]) -> Type[T]:
     """Create a string enum from an enum class.
 
     To be a string enum, the enum class must follow the following conventions:
     - All values must be strings;
     - All names must be uppercase;
     - All values must be lowercase;
-    - All values must be the lowercase version of the name.
+    - All values must be the lowercase version of the name with underscores replaced
+        by hyphens.
 
     If the enum class follows these conventions, then this decorator will
     add:
@@ -40,7 +39,7 @@ def str_enum(cls: Type[T]) -> Type[T]:
             raise ValueError(f"Enum member <{member}> has a non-uppercase name.")
         if member.value != member.value.lower():
             raise ValueError(f"Enum member <{member}> has a non-lowercase value.")
-        if member.value != member.name.lower():
+        if member.value != member.name.lower().replace("_", "-"):
             raise ValueError(
                 f"Enum member <{member}> has a value <{member.value}> "
                 "that is not the lowercase version of its name."

@@ -9,7 +9,7 @@ import torch
 from torch import Tensor
 from typing_extensions import Self
 
-from deepsight.structures import BoundingBoxes, Image
+from deepsight.structures.vision import BoundingBoxes, Image
 from deepsight.typing import Moveable
 
 
@@ -32,14 +32,14 @@ class Sample(Moveable):
     def device(self) -> torch.device:
         return self.image.device
 
-    def move(self, device: torch.device, non_blocking: bool = False) -> Self:
-        if self.device == device:
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
+        if self.device == torch.device(device):
             return self
 
         return self.__class__(
-            image=self.image.move(device, non_blocking),
-            entity_boxes=self.entity_boxes.move(device, non_blocking),
-            entity_labels=self.entity_labels.to(device, non_blocking=non_blocking),
+            self.image.to(device, non_blocking=non_blocking),
+            self.entity_boxes.to(device, non_blocking=non_blocking),
+            self.entity_labels.to(device, non_blocking=non_blocking),
         )
 
 
@@ -74,8 +74,8 @@ class Annotations(Moveable):
     def device(self) -> torch.device:
         return self.interactions.device
 
-    def move(self, device: torch.device, non_blocking: bool = False) -> Self:
-        if self.device == device:
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
+        if self.device == torch.device(device):
             return self
 
         return self.__class__(
@@ -126,8 +126,8 @@ class Predictions(Moveable):
     def device(self) -> torch.device:
         return self.interactions.device
 
-    def move(self, device: torch.device, non_blocking: bool = False) -> Self:
-        if self.device == device:
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
+        if self.device == torch.device(device):
             return self
 
         return self.__class__(

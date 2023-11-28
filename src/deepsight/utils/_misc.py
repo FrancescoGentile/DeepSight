@@ -2,12 +2,10 @@
 ##
 ##
 
-from typing import TypeVar
+from collections.abc import Iterable
 
 import torch
 from torch import Tensor
-
-T = TypeVar("T")
 
 
 def is_float_tensor(tensor: Tensor) -> bool:
@@ -20,7 +18,7 @@ def is_integer_tensor(tensor: Tensor) -> bool:
     return tensor.dtype in [torch.int8, torch.int16, torch.int32, torch.int64]
 
 
-def to_2tuple(value: T | tuple[T, T]) -> tuple[T, T]:
+def to_2tuple[T](value: T | tuple[T, T]) -> tuple[T, T]:
     """Convert a value to a 2-tuple."""
     if isinstance(value, tuple):
         if len(value) != 2:
@@ -28,3 +26,13 @@ def to_2tuple(value: T | tuple[T, T]) -> tuple[T, T]:
         return value
 
     return value, value
+
+
+def to_tuple[T](value: T | Iterable[T]) -> tuple[T, ...]:
+    """Convert a value to a tuple."""
+    if isinstance(value, tuple):
+        return value
+    elif isinstance(value, Iterable):
+        return tuple(value)
+    else:
+        return (value,)

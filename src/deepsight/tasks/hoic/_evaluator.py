@@ -3,7 +3,6 @@
 ##
 
 import enum
-from collections.abc import Iterable
 from typing import Annotated, Any, Literal
 
 import torch
@@ -17,9 +16,7 @@ from torchmetrics.classification import (
 )
 from typing_extensions import Self
 
-from deepsight.structures import Batch
-from deepsight.tasks import Evaluator as _Evaluator
-from deepsight.tasks import MetricType
+from deepsight.core import Batch, Evaluator, MetricInfo
 from deepsight.typing import Moveable, Stateful, str_enum
 
 from ._structures import Predictions
@@ -46,7 +43,7 @@ class ErrorStrategy(enum.Enum):
     RAISE = "raise"
 
 
-class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
+class Evaluator(Evaluator[Predictions], Moveable, Stateful):
     """Evaluator for the Human-Object Interaction (HOI) task.
 
     The evaluator computes the accuracy, precision, recall, and F1 score of the
@@ -112,21 +109,18 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     # ----------------------------------------------------------------------- #
 
     @property
-    def metrics(self) -> Iterable[tuple[str, MetricType]]:
-        return [
-            ("accuracy", MetricType.NUMERIC),
-            ("precision", MetricType.NUMERIC),
-            ("recall", MetricType.NUMERIC),
-            ("f1_score", MetricType.NUMERIC),
-        ]
-
-    @property
     def device(self) -> torch.device:
         return next(iter(self._metrics.values())).device
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
+
+    def get_metrics_info(self) -> tuple[MetricInfo, ...]:
+        return tuple(
+            MetricInfo(name=str(name), type=MetricInfo.Type.NUMERIC)
+            for name in self._metrics.keys()
+        )
 
     def update(
         self, predictions: Batch[Predictions], ground_truth: Batch[Predictions]
@@ -163,15 +157,15 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful):
     def reset(self) -> None:
         self._metrics.reset()
 
-    def move(self, device: torch.device, non_blocking: bool = False) -> Self:
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         self._metrics = self._metrics.to(device, non_blocking=non_blocking)
         return self
 
-    def get_state(self) -> dict[str, Any]:
+    def state_dict(self) -> dict[str, Any]:
         return {"metrics": self._metrics.state_dict()}
 
-    def set_state(self, state: dict[str, Any]) -> None:
-        self._metrics.load_state_dict(state["metrics"])
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
+        self._metrics.load_state_dict(state_dict["metrics"])
 
 
 # --------------------------------------------------------------------------- #

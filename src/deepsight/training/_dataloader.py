@@ -3,19 +3,17 @@
 ##
 
 from collections.abc import Iterator
-from typing import Generic, TypeVar
+from typing import Any
 
 from torch.utils.data import DataLoader as _DataLoader
 
-from deepsight.structures import Batch
-from deepsight.tasks import Dataset
+from deepsight.core import Batch, Dataset
+from deepsight.typing import StateDict, Stateful
 
-S = TypeVar("S")
-A = TypeVar("A")
-T = TypeVar("T")
+from ._sampler import BatchSampler, RandomSampler, SequentialSampler
 
 
-class DataLoader(Generic[S, A, T]):
+class DataLoader[S, A, T](Stateful):
     """A wrapper around PyTorch's DataLoader to batch samples from a dataset."""
 
     # ------------------------------------------------------------------------- #
@@ -30,12 +28,13 @@ class DataLoader(Generic[S, A, T]):
         num_workers: int = 0,
         drop_last: bool = False,
     ) -> None:
+        sampler = RandomSampler(dataset) if shuffle else SequentialSampler(dataset)
+        batch_sampler = BatchSampler(sampler, batch_size, drop_last)
+
         self._loader = _DataLoader(
             dataset,  # type: ignore
-            batch_size=batch_size,
-            shuffle=shuffle,
+            batch_sampler=batch_sampler,
             num_workers=num_workers,
-            drop_last=drop_last,
             collate_fn=self._collate_fn,
         )
 
@@ -47,6 +46,32 @@ class DataLoader(Generic[S, A, T]):
     def dataset(self) -> Dataset[S, A, T]:
         """The dataset used to create the batches."""
         return self._loader.dataset  # type: ignore
+
+    @property
+    def batch_size(self) -> int:
+        """The batch size."""
+        return self._loader.batch_size  # type: ignore
+
+    # ------------------------------------------------------------------------- #
+    # Public methods
+    # ------------------------------------------------------------------------- #
+
+    def num_batches(self) -> int:
+        """Get the number of batches."""
+        return len(self)
+
+    def num_samples(self) -> int:
+        """Get the number of samples."""
+        if self._loader.drop_last:
+            return self.num_batches() * self.batch_size
+        else:
+            return len(self.dataset)
+
+    def state_dict(self) -> StateDict:
+        return self._loader.batch_sampler.state_dict()  # type: ignore
+
+    def load_state_dict(self, state_dict: StateDict) -> Any:
+        self._loader.batch_sampler.load_state_dict(state_dict)  # type: ignore
 
     # ------------------------------------------------------------------------- #
     # Magic methods

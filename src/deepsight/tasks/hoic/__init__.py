@@ -5,16 +5,14 @@
 """The Human-Object Interaction Classification task."""
 
 from ._evaluator import ErrorStrategy, Evaluator
-from ._h2o_dataset import H2ODataset
-from ._hicodet_dataset import HICODETDataset
 from ._structures import Annotations, Predictions, Sample
 
 __all__ = [
-    "Annotations",
+    # _evaluator
     "ErrorStrategy",
     "Evaluator",
-    "H2ODataset",
-    "HICODETDataset",
+    # _structures
+    "Annotations",
     "Predictions",
     "Sample",
 ]

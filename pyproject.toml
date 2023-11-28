@@ -6,17 +6,17 @@ authors = [
     {name = "Francesco Gentile", email = "francesco.gentile@studenti.unitn.it"},
 ]
 dependencies = [
-    "torch>=2.0",
-    "numpy>=1.25.2",
-    "timm>=0.9.7",
-    "torchvision>=0.16.0",
-    "torchmetrics>=1.2.0",
-    "wandb>=0.15.12",
-    "tqdm>=4.66.1",
-    "scipy>=1.9.3",
-    "scikit-learn>=1.3.2",
+    "numpy>=1.26",
+    # "torch==2.2.0.dev20231120+cu121",
+    # "torchmetrics>=1.2",
+    "wandb>=0.16",
+    "tqdm>=4.66",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "coolname>=2.2",
+    "Pillow>=10.1.0",
 ]
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
@@ -26,32 +26,26 @@ build-backend = "pdm.backend"
 
 [tool.pdm.dev-dependencies]
 lint = [
-    "ruff>=0.1.1",
-    "pyright>=1.1.330.post0",
+    "ruff>=0.1.6",
+    "pyright>=1.1.336",
 ]
 docs = [
     "mkdocs>=1.5.3",
-    "mkdocstrings[python]>=0.23.0",
-    "mkdocs-material>=9.4.4",
-]
-tests = [
-    "ipykernel>=6.26.0",
-    "matplotlib>=3.8.1",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-material>=9.4.10",
 ]
 
 [tool.ruff]
 line-length = 88
 target-version = "py310"
 select = ["A", "ANN", "B", "C4", "C90", "D", "E", "F", "I", "N"]
-ignore = ["A003", "ANN101", "ANN102", "ANN401", "D104"]
+ignore = ["A003", "ANN101", "ANN102", "ANN401", "D104", "C901"]
 fixable = ["ALL"]
 fix = true
 
 [tool.ruff.pydocstyle]
 convention = "google"
 
-[tool.ruff.mccabe]
-max-complexity = 10
 
 [tool.ruff.format]
 preview = true

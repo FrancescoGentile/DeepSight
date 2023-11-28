@@ -3,17 +3,33 @@
 ##
 
 from ._decorators import str_enum
-from ._protocols import Configurable, Moveable, Stateful
-from ._types import JSONPrimitive, number
+from ._protocols import Configurable, Detachable, Moveable, Stateful
+from ._types import (
+    Configs,
+    Loss,
+    Losses,
+    Number,
+    PathLike,
+    SparseTensor,
+    StateDict,
+    Tensor,
+)
 
 __all__ = [
-    # decorators
+    # _decorators
     "str_enum",
-    # protocols
+    # _protocols
     "Configurable",
+    "Detachable",
     "Moveable",
     "Stateful",
-    # types
-    "JSONPrimitive",
-    "number",
+    # _types
+    "Configs",
+    "Loss",
+    "Losses",
+    "PathLike",
+    "Number",
+    "SparseTensor",
+    "StateDict",
+    "Tensor",
 ]

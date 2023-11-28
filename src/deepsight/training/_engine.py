@@ -2,532 +2,353 @@
 ##
 ##
 
-import json
-import logging
-import math
-import random
-from datetime import datetime
-from pathlib import Path
-from timeit import default_timer as timer
-from typing import Any, Generic, TypeVar
+from collections import Counter
+from collections.abc import Iterable
+from typing import Callable
 
-import numpy as np
+import coolname
 import torch
-import wandb
-from torch import Tensor
 from torch.amp.autocast_mode import autocast
-from torch.cuda.amp.grad_scaler import GradScaler
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
-from tqdm import tqdm
+from torch.cuda.amp import GradScaler
 
-from deepsight.nn.models import Criterion, DeepSightModel
-from deepsight.tasks import Dataset, Evaluator, MetricType
-from deepsight.typing import Configurable, JSONPrimitive, Moveable, Stateful
+from deepsight import utils
+from deepsight.core import Batch, Model
+from deepsight.typing import Detachable
 
-from ._dataloader import DataLoader
-from .schedulers import ReciprocalLR
+from .callbacks import Callback
+from .structs import (
+    BatchLosses,
+    ClipGradNorm,
+    ClipGradValue,
+    EpochPhase,
+    EvaluationPhase,
+    Precision,
+    State,
+    Timestamp,
+    TrainingPhase,
+)
 
-S = TypeVar("S")
-O = TypeVar("O")  # noqa
-A = TypeVar("A")
-P = TypeVar("P")
 
-
-class Engine(Stateful, Generic[S, O, A, P]):
+class Engine[S, O: Detachable, A, P]:
     def __init__(
         self,
-        train_dataset: Dataset[S, A, P],
-        eval_dataset: Dataset[S, A, P],
-        model: DeepSightModel[S, O, A, P],
-        criterion: Criterion[O, A],
-        evaluator: Evaluator[P],
-        optimizer: Optimizer,
-        scheduler: LRScheduler,
-        step_after_batch: bool,
-        train_batch_size: int,
-        accumulation_steps: int,
-        eval_batch_size: int,
-        metric_to_optimize: str,
-        max_epochs: int = -1,
-        patience: int = 3,
-        check_val_every_n_epochs: int = 1,
-        log_every_n_steps: int = 50,
-        keep_checkpoints: int = 1,
-        max_grad_norm: float | None = None,
-        init_scale: float | None = None,
-        device: torch.device | None = None,
-        precision: torch.dtype = torch.float32,
-        output_dir: Path | str = "./output",
-        wandb_project: str | None = None,
+        model: Model[S, O, A, P],
+        phases: EpochPhase[S, O, A, P] | Iterable[EpochPhase[S, O, A, P]],
+        callbacks: Callback[S, O, A, P] | Iterable[Callback[S, O, A, P]] | None,
+        device: torch.device | str | None = None,
+        precision: Precision = Precision.FP32,
+        run_name: str | None = None,
+        max_duration: int | Callable[[State[S, O, A, P]], bool] | None = None,
     ) -> None:
-        """Initialize the training engine."""
-        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.output_dir = Path(output_dir) / now
-        self.output_dir.mkdir(parents=True, exist_ok=False)
-        self.logger = _get_logger(self.output_dir / "train.log")
-        self.logger.info(f"Output directory: {self.output_dir}.")
+        phases = utils.to_tuple(phases)
+        if len(phases) == 0:
+            raise ValueError("At least one phase must be specified.")
+        labels_counter = Counter(phase.label for phase in phases)
+        if any(count > 1 for count in labels_counter.values()):
+            raise ValueError("Duplicate phase labels are not allowed.")
+
+        callbacks = () if callbacks is None else utils.to_tuple(callbacks)
 
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = device
-        self.logger.info(f"Using device: {device}.")
-
-        self.precision = precision
-        self.logger.info(f"Using precision: {precision}.")
-
-        self.metric_to_optimize = metric_to_optimize
-        for metric_name, metric_type in evaluator.metrics:
-            if metric_name == metric_to_optimize:
-                if metric_type != MetricType.NUMERIC:
-                    raise ValueError(
-                        f"Metric '{metric_name}' is not numeric and cannot be used "
-                        "for optimization."
-                    )
-                break
         else:
-            raise ValueError(
-                f"Metric '{metric_to_optimize}' is not defined in the evaluator."
-            )
+            device = torch.device(device)
 
-        self.max_epochs = max_epochs
-        self.patience = patience
-        self.check_val_every_n_epochs = check_val_every_n_epochs
-        self.log_every_n_steps = log_every_n_steps
-        self.max_grad_norm = max_grad_norm
-        self.keep_checkpoints = keep_checkpoints
+        if run_name is None:
+            run_name = coolname.generate_slug(2)
 
-        # Setup datasets
-        self._setup_loaders(
-            train_dataset,
-            eval_dataset,
-            train_batch_size,
-            eval_batch_size,
-            accumulation_steps,
+        if device.type == "cuda" and precision.is_mixed_precision():
+            scaler = GradScaler()
+        else:
+            scaler = GradScaler(enabled=False)
+
+        state = State(
+            run_name=run_name,
+            model=model,
+            phases=phases,
+            timestamp=Timestamp.start(phases),
+            device=device,
+            precision=precision,
+            scaler=scaler,
+            callbacks=callbacks,
         )
+        self._state = state.to(device)
 
-        # Setup model
-        self._setup_model(model)
-        if isinstance(criterion, Moveable):
-            criterion = criterion.move(self.device, non_blocking=True)
-        self.criterion = criterion
+        self._max_duration = max_duration
 
-        if isinstance(evaluator, Moveable):
-            evaluator = evaluator.move(self.device, non_blocking=True)
-        self.evaluator = evaluator
-
-        self.optimizer = optimizer
-        self.logger.info(f"Using optimizer: {optimizer}.")
-        self.scheduler = scheduler
-        self.logger.info(f"Using scheduler: {scheduler}.")
-        self.step_after_batch = step_after_batch
-
-        self._setup_scaler(init_scale)
-
-        configs = self._get_configs()
-        with open(self.output_dir / "configs.json", "w") as f:
-            json.dump(configs, f, indent=2)
-        self._setup_wandb(wandb_project, configs)
+        for callback in self._state.callbacks:
+            callback.on_init(self._state)
 
     # ----------------------------------------------------------------------- #
-    # Public static methods
-    # ----------------------------------------------------------------------- #
-
-    @staticmethod
-    def setup_libraries(seed: int, deterministic: bool = False) -> None:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        torch.set_default_dtype(torch.float32)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.enabled = True
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = deterministic
-        torch.use_deterministic_algorithms(deterministic)
-
-    # ----------------------------------------------------------------------- #
-    # Public methods
+    # Public Methods
     # ----------------------------------------------------------------------- #
 
     def fit(self) -> None:
-        """Starts the training loop."""
+        for callback in self._state.callbacks:
+            callback.on_fit_start(self._state)
+
         try:
-            self._run()
-        except KeyboardInterrupt:
-            self.logger.info("Training interrupted.")
-            wandb.finish()
+            while not self._should_stop():
+                self._execute_epoch()
+                self._state.next_epoch()
+
+            for callback in reversed(self._state.callbacks):
+                callback.on_fit_end(self._state, None)
+        except KeyboardInterrupt as e:
+            for callback in reversed(self._state.callbacks):
+                callback.on_fit_end(self._state, error=e)
+            raise e
         except Exception as e:
-            self.logger.error(f"Training failed with error: {e}.")
+            for callback in reversed(self._state.callbacks):
+                callback.on_fit_end(self._state, error=e)
             raise e
 
-    def get_state(self) -> dict[str, Any]:
-        state = {
-            "model": self.model.get_state(),
-            "optimizer": self.optimizer.state_dict(),
-            "scheduler": self.scheduler.state_dict(),
-        }
-
-        if isinstance(self.criterion, Stateful):
-            state["criterion"] = self.criterion.get_state()
-        if isinstance(self.evaluator, Stateful):
-            state["evaluator"] = self.evaluator.get_state()
-
-        return state
-
-    def set_state(self, state: dict[str, Any]) -> None:
-        self.model.set_state(state["model"])
-        self.optimizer.load_state_dict(state["optimizer"])
-        self.scheduler.load_state_dict(state["scheduler"])
-
-        if isinstance(self.criterion, Stateful):
-            self.criterion.set_state(state["criterion"])
-        if isinstance(self.evaluator, Stateful):
-            self.evaluator.set_state(state["evaluator"])
-
     # ----------------------------------------------------------------------- #
-    # Private methods
+    # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _setup_loaders(
-        self,
-        train_dataset: Dataset[S, A, P],
-        eval_dataset: Dataset[S, A, P],
-        train_batch_size: int,
-        eval_batch_size: int,
-        accumulation_steps: int,
-    ) -> None:
-        self.accumulation_steps = accumulation_steps
-        self.train_loader = DataLoader(
-            train_dataset,
-            batch_size=train_batch_size,
-            shuffle=True,
-            num_workers=4,
-            drop_last=True,
-        )
-        self.eval_loader = DataLoader(
-            eval_dataset,
-            batch_size=eval_batch_size,
-            shuffle=False,
-            num_workers=4,
-            drop_last=False,
-        )
+    def _should_stop(self) -> bool:
+        match self._max_duration:
+            case None:
+                return False
+            case int():
+                return self._state.timestamp.num_epochs >= self._max_duration
+            case _:
+                return self._max_duration(self._state)
 
-        self.logger.info(f"Using train dataset: {train_dataset}.")
-        self.logger.info(f"\tbatch size: {train_batch_size}.")
-        self.logger.info(f"Using eval dataset: {eval_dataset}.")
+    def _execute_epoch(self) -> None:
+        for callback in self._state.callbacks:
+            callback.on_epoch_start(self._state)
 
-    def _setup_model(self, model: DeepSightModel[S, O, A, P]) -> None:
-        model = model.move(self.device, non_blocking=True)
-        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        while self._state.current_phase_idx < len(self._state.phases):
+            if self._state.current_phase.should_run(self._state):
+                self._execute_phase()
+            self._state.next_phase()
 
-        self.model = model
-        self.logger.info("Using model:")
-        self.logger.info(model)
-        self.logger.info(f"\ttotal number of parameters: {num_params}.")
+        for callback in reversed(self._state.callbacks):
+            callback.on_epoch_end(self._state)
 
-    def _setup_scaler(self, init_scale: float | None) -> None:
-        enabled = self.device.type == "cuda"
-        enabled &= self.precision == torch.float16 or self.precision == torch.bfloat16
-        if init_scale is not None:
-            self.scaler = GradScaler(init_scale=init_scale, enabled=enabled)
-        else:
-            self.scaler = GradScaler(enabled=enabled)
+    def _execute_phase(self) -> None:
+        phase = self._state.current_phase
+        self._state.current_phase_timestamp.start_epoch()
 
-    def _get_configs(self) -> dict[str, JSONPrimitive]:
-        configs = {}
-        objects = [
-            ("train_dataset", self.train_loader.dataset),
-            ("eval_dataset", self.eval_loader.dataset),
-            ("model", self.model),
-            ("criterion", self.criterion),
-            ("evaluator", self.evaluator),
-            ("optimizer", self.optimizer),
-            ("scheduler", self.scheduler),
-        ]
+        for callback in self._state.callbacks:
+            callback.on_phase_start(self._state)
 
-        for name, obj in objects:
-            if isinstance(obj, Configurable):
-                configs[name] = {
-                    "__class__": obj.__class__.__name__,
-                    "config": obj.get_config(),
-                }
+        match phase:
+            case TrainingPhase():
+                self._execute_training_phase(phase)
+            case EvaluationPhase():
+                self._execute_evaluation_phase(phase)
 
-        return configs
+        for callback in reversed(self._state.callbacks):
+            callback.on_phase_end(self._state)
 
-    def _setup_wandb(
-        self, project: str | None, config: dict[str, JSONPrimitive]
-    ) -> None:
-        if project is None:
-            wandb.init(mode="disabled")
-            return
+        self._state.current_phase_timestamp.end_epoch()
+        if phase.evaluator is not None:
+            phase.evaluator.reset()
 
-        wandb.init(
-            job_type="train", dir=self.output_dir, config=config, project=project
-        )
+    # ----------------------------------------------------------------------- #
+    # Evaluation
+    # ----------------------------------------------------------------------- #
 
-        wandb.define_metric("train/step", hidden=True)
-        wandb.define_metric("train/lr", step_metric="train/step")
-        for loss in self.criterion.losses:
-            wandb.define_metric(
-                f"train/{loss}", step_metric="train/step", summary="min"
-            )
-        wandb.define_metric("train/total_loss", step_metric="train/step", summary="min")
+    def _execute_evaluation_phase(self, phase: EvaluationPhase[S, O, A, P]) -> None:
+        torch.set_grad_enabled(False)
+        self._state.model.eval()
 
-        wandb.define_metric("epoch", hidden=True)
-        for loss in self.criterion.losses:
-            wandb.define_metric(f"eval/{loss}", step_metric="epoch", summary="min")
-        wandb.define_metric("eval/total_loss", step_metric="epoch", summary="min")
-
-        for metric_name, metric_type in self.evaluator.metrics:
-            if metric_type == MetricType.NUMERIC:
-                wandb.define_metric(
-                    f"eval/{metric_name}", step_metric="epoch", summary="max"
-                )
-
-    def _run(self) -> None:
-        self.logger.info("Starting training.")
-
-        max_epochs = self.max_epochs if self.max_epochs > 0 else math.inf
-        current_epoch = 0
-        self.train_step = 0
-        current_patience = self.patience
-        current_optimal_metric = -math.inf
-
-        while current_epoch < max_epochs:
-            self.logger.info(f"Starting epoch {current_epoch + 1}/{max_epochs}.")
-            wandb.log({"epoch": current_epoch + 1})
-
-            self._train_epoch(current_epoch, False)
-            torch.cuda.empty_cache()
-
-            if (current_epoch + 1) % self.check_val_every_n_epochs == 0:
-                if isinstance(self.scheduler, ReciprocalLR):
-                    state = self.get_state()
-                    torch.save(state, self.output_dir / "tmp_state.pt")
-                    del state
-
-                    self.scheduler.start_cooldown()
-                    self._train_epoch(current_epoch, True)
-                    self.scheduler.stop_cooldown()
-
-                    self._eval_epoch(current_epoch)
-
-                    # restore state
-                    state = torch.load(self.output_dir / "tmp_state.pt")
-                    self.set_state(state)
-                else:
-                    self._eval_epoch(current_epoch)
-
-                torch.cuda.empty_cache()
-
-                metrics = self.evaluator.compute_numeric_metrics()
-                metric_value = float(metrics[self.metric_to_optimize])
-                if metric_value > current_optimal_metric:
-                    current_optimal_metric = metric_value
-                    current_patience = self.patience
-                    model_state = self.model.get_state()
-                    torch.save(model_state, self.output_dir / "model.pt")
-                else:
-                    current_patience -= 1
-
-            if current_patience > 0:
-                self.logger.info(f"Current patience: {current_patience}.")
-            else:
-                self.logger.info("No patience left.")
-                break
-
-            state = self.get_state()
-            torch.save(state, self.output_dir / f"checkpoint_{current_epoch}.pt")
-            del state
-
-            if current_epoch >= self.keep_checkpoints:
-                checkpoint_path = (
-                    self.output_dir
-                    / f"checkpoint_{current_epoch - self.keep_checkpoints}.pt"
-                )
-                checkpoint_path.unlink()
-
-            self.evaluator.reset()
-            current_epoch += 1
-
-        self.logger.info("Training finished.")
-
-    def _train_epoch(self, epoch: int, cooldown: bool) -> None:  # noqa
-        if cooldown:
-            self.logger.info("Cooldown epoch started.")
-        else:
-            self.logger.info(f"Training epoch {epoch + 1} started.")
-
-        self.model.train()
-        self.optimizer.zero_grad()
-
-        last_n_steps_losses = {loss: 0.0 for loss in self.criterion.losses}
-        last_n_steps_losses["total_loss"] = 0.0
-        last_n_steps_num_samples = 0
-
-        all_losses = {loss: 0.0 for loss in self.criterion.losses}
-        all_losses["total_loss"] = 0.0
-        all_num_samples = 0
-        enabled = self.precision == torch.float16 or self.precision == torch.bfloat16
-
-        start = timer()
-        for samples, annotations, _ in tqdm(self.train_loader, desc="Training"):
-            acc_batches = zip(
-                samples.split(num_splits=self.accumulation_steps),
-                annotations.split(num_splits=self.accumulation_steps),
-                strict=True,
-            )
-
-            last_n_steps_num_samples += len(samples)
-            all_num_samples += len(samples)
-
-            for acc_samples, acc_annotations in acc_batches:
-                acc_samples = acc_samples.move(self.device, True)
-                acc_annotations = acc_annotations.move(self.device, True)
-
-                with autocast(self.device.type, self.precision, enabled):
-                    outputs = self.model(acc_samples, acc_annotations)
-                    losses = self.criterion.compute(outputs, acc_annotations)
-
-                    for loss, value in losses.items():
-                        last_n_steps_losses[loss] += value.item() * len(acc_samples)
-                        all_losses[loss] += value.item() * len(acc_samples)
-
-                    total_loss: Tensor = sum(losses.values())  # type: ignore
-                    last_n_steps_losses["total_loss"] += total_loss.item() * len(
-                        acc_samples
-                    )
-                    all_losses["total_loss"] += total_loss.item() * len(acc_samples)
-
-                    total_loss = total_loss / self.accumulation_steps
-
-                self.scaler.scale(total_loss).backward()  # type: ignore
-
-            if self.max_grad_norm is not None:
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(  # type: ignore
-                    self.model.parameters(), self.max_grad_norm
-                )
-
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.optimizer.zero_grad()
-            if self.step_after_batch:
-                self.scheduler.step()
-
-            if cooldown:
-                # if we are in cooldown mode, we do not want to log anything to wandb
-                continue
-
-            if (self.train_step + 1) % self.log_every_n_steps == 0:
-                for loss, value in last_n_steps_losses.items():
-                    wandb.log({f"train/{loss}": value / last_n_steps_num_samples})
-
-                wandb.log({"train/step": self.train_step + 1})
-                wandb.log({"train/lr": self.scheduler.get_last_lr()[0]})
-
-                last_n_steps_losses = {loss: 0.0 for loss in self.criterion.losses}
-                last_n_steps_losses["total_loss"] = 0.0
-                last_n_steps_num_samples = 0
-
-            self.train_step += 1
-
-        if self.step_after_batch:
-            self.scheduler.step()
-
-        end = timer()
-        if cooldown:
-            self.logger.info("Cooldown epoch finished.")
-        else:
-            self.logger.info(f"Training epoch {epoch + 1} finished.")
-
-        self.logger.info("Statistics:")
-        elapsed_time = end - start
-        self.logger.info(f"\telapsed time: {elapsed_time:.2f} s.")
-        self.logger.info(
-            f"\tthroughput: {all_num_samples / elapsed_time:.2f} samples/s."
-        )
-
-        self.logger.info("Losses:")
-        for loss, value in all_losses.items():
-            self.logger.info(f"\t{loss}: {value / all_num_samples:.4f}.")
-            wandb.log({f"train/{loss}": value / all_num_samples})
-
-    @torch.inference_mode()
-    def _eval_epoch(self, epoch: int) -> None:
-        self.logger.info(f"Eval epoch {epoch + 1} started.")
-
-        self.model.eval()
-
-        losses = {loss: 0.0 for loss in self.criterion.losses}
-        losses["total_loss"] = 0.0
-        num_samples = 0
-
-        start = timer()
-        for samples, annotations, targets in tqdm(self.eval_loader, desc="Eval"):
-            num_samples += len(samples)
-            samples = samples.move(self.device, non_blocking=True)
-            annotations = annotations.move(self.device, non_blocking=True)
-            targets = targets.move(self.device, non_blocking=True)
+        for samples, annotations, golds in phase.dataloader:
+            samples = samples.to(self._state.device, non_blocking=True)
+            annotations = annotations.to(self._state.device, non_blocking=True)
+            golds = golds.to(self._state.device, non_blocking=True)
 
             with autocast(
-                enabled=self.scaler.is_enabled(),
-                device_type=self.device.type,
-                dtype=self.precision,
+                self._state.device.type,
+                self._state.precision.to_torch_dtype(),
+                enabled=self._state.precision.is_mixed_precision(),
             ):
-                outputs = self.model(samples, None)
-                batch_losses = self.criterion.compute(outputs, annotations)
-                total_loss = 0.0
+                for callback in self._state.callbacks:
+                    callback.on_forward_start(self._state, samples, None)
 
-                for loss, value in batch_losses.items():
-                    total_loss += value.item() * len(samples)
-                    losses[loss] += value.item() * len(samples)
-                losses["total_loss"] += total_loss
+                outputs = self._state.model(samples, None)
 
-                predictions = self.model.postprocess(outputs)
-                self.evaluator.update(predictions, targets)
+                for callback in reversed(self._state.callbacks):
+                    callback.on_forward_end(self._state, outputs)
 
-        end = timer()
-        self.logger.info(f"Eval epoch {epoch + 1} finished.")
+                if phase.criterion is not None:
+                    for callback in self._state.callbacks:
+                        callback.on_criterion_start(self._state, outputs, annotations)
 
-        self.logger.info("Statistics:")
-        elapsed_time = end - start
-        self.logger.info(f"\telapsed time: {elapsed_time:.2f} s.")
-        self.logger.info(f"\tthroughput: {num_samples / elapsed_time:.2f} samples/s.")
+                    losses = phase.criterion.compute(outputs, annotations)
+                    losses = BatchLosses(losses, len(samples))
 
-        self.logger.info("Losses:")
-        for loss, value in losses.items():
-            self.logger.info(f"\t{loss}: {value / num_samples:.4f}.")
-            wandb.log({f"eval/{loss}": value / num_samples})
+                    for callback in reversed(self._state.callbacks):
+                        callback.on_criterion_end(self._state, losses)
 
-        self.logger.info("Metrics:")
-        metrics = self.evaluator.compute_numeric_metrics()
-        for metric_name, metric_value in metrics.items():
-            self.logger.info(f"\t{metric_name}: {metric_value:.4f}.")
-            wandb.log({f"eval/{metric_name}": metric_value})
+                    for callback in self._state.callbacks:
+                        callback.on_step_loss(self._state, losses)
 
+            for callback in self._state.callbacks:
+                callback.on_evaluation_start(self._state)
 
-# --------------------------------------------------------------------------- #
-# Private helper functions
-# --------------------------------------------------------------------------- #
+            predictions = self._state.model.postprocess(outputs)
+            phase.evaluator.update(predictions, golds)
 
+            for callback in reversed(self._state.callbacks):
+                callback.on_evaluation_end(self._state)
 
-def _get_logger(path: Path | None) -> logging.Logger:
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
+            for callback in reversed(self._state.callbacks):
+                callback.on_step_end(self._state)
 
-    formatter = logging.Formatter(
-        fmt="[%(asctime)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
+            self._state.current_phase_timestamp.next_batch(len(samples))
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
+    # ----------------------------------------------------------------------- #
+    # Training
+    # ----------------------------------------------------------------------- #
 
-    if path is not None:
-        file_handler = logging.FileHandler(path)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+    def _execute_training_phase(self, phase: TrainingPhase[S, O, A, P]) -> None:
+        torch.set_grad_enabled(True)
+        self._state.model.train()
+        for optimizer in phase.optimizers:
+            optimizer.zero_grad()
 
-    return logger
+        for samples, annotations, golds in phase.dataloader:
+            for callback in self._state.callbacks:
+                callback.on_step_start(self._state)
+
+            outputs = self._execute_accumulation_steps(phase, samples, annotations)
+            self._execute_optimization_step(phase)
+            self._execute_evaluation_step(phase, outputs, golds)
+
+            for callback in reversed(self._state.callbacks):
+                callback.on_step_end(self._state)
+
+            self._state.current_phase_timestamp.next_batch(len(samples))
+
+    def _execute_accumulation_steps(
+        self,
+        phase: TrainingPhase[S, O, A, P],
+        samples: Batch[S],
+        annotations: Batch[A],
+    ) -> list[O]:
+        losses: list[BatchLosses] = []
+        outputs: list[O] = []
+        for acc_samples, acc_annotations in zip(
+            samples.split(phase.accumulation_steps),
+            annotations.split(phase.accumulation_steps),
+            strict=True,
+        ):
+            acc_output, acc_losses = self._execute_forward_backward(
+                phase, acc_samples, acc_annotations
+            )
+            outputs.append(acc_output)
+            losses.append(acc_losses)
+
+        for callback in self._state.callbacks:
+            callback.on_step_loss(self._state, BatchLosses.accumulate(losses))
+
+        return outputs
+
+    def _execute_forward_backward(
+        self,
+        phase: TrainingPhase[S, O, A, P],
+        samples: Batch[S],
+        annotations: Batch[A],
+    ) -> tuple[O, BatchLosses]:
+        samples = samples.to(self._state.device, non_blocking=True)
+        annotations = annotations.to(self._state.device, non_blocking=True)
+        with autocast(
+            self._state.device.type,
+            self._state.precision.to_torch_dtype(),
+            enabled=self._state.precision.is_mixed_precision(),
+        ):
+            for callback in self._state.callbacks:
+                callback.on_forward_start(self._state, samples, annotations)
+
+            output = self._state.model(samples, annotations)
+
+            for callback in reversed(self._state.callbacks):
+                callback.on_forward_end(self._state, output)
+
+            for callback in self._state.callbacks:
+                callback.on_criterion_start(self._state, output, annotations)
+
+            losses = phase.criterion.compute(output, annotations)
+            losses = BatchLosses(losses, len(samples))
+
+            for callback in reversed(self._state.callbacks):
+                callback.on_criterion_end(self._state, losses)
+
+            total_acc_loss = torch.as_tensor(sum(losses.values()))
+            total_acc_loss = total_acc_loss / phase.accumulation_steps
+            self._state.scaler.scale(total_acc_loss).backward()
+
+        # Detach the losses and the output to avoid keeping in memory the associated
+        # computation graph across accumulation steps.
+        for name, value in losses.items():
+            losses[name] = value.detach()
+
+        output = output.detach()
+
+        return output, losses
+
+    def _execute_optimization_step(self, phase: TrainingPhase[S, O, A, P]) -> None:
+        for callback in self._state.callbacks:
+            callback.on_optimization_start(self._state)
+
+        match phase.clip_gradient:
+            case ClipGradValue(value):
+                for optimizer in phase.optimizers:
+                    self._state.scaler.unscale_(optimizer)
+
+                torch.nn.utils.clip_grad_value_(self._state.model.parameters(), value)
+            case ClipGradNorm(norm):
+                for optimizer in phase.optimizers:
+                    self._state.scaler.unscale_(optimizer)
+
+                torch.nn.utils.clip_grad_norm_(self._state.model.parameters(), norm)
+            case None:
+                pass
+
+        if phase.schedulers is not None:
+            for scheduler in phase.schedulers:
+                scheduler.step(self._state.current_phase_timestamp)
+
+        for optimizer in phase.optimizers:
+            self._state.scaler.step(optimizer)
+
+        scale = self._state.scaler.get_scale()
+        self._state.scaler.update()
+
+        if scale > self._state.scaler.get_scale():
+            # The scale factor has been decreased, which means that
+            # there was an overflow. Since no parameter update was
+            # performed, we do not call `scheduler.step()`.
+            utils.get_library_logger().warning("Gradient overflow detected.")
+
+        for callback in reversed(self._state.callbacks):
+            callback.on_optimization_end(self._state)
+
+        for optimizer in phase.optimizers:
+            optimizer.zero_grad()
+
+    def _execute_evaluation_step(
+        self,
+        phase: TrainingPhase[S, O, A, P],
+        outputs: list[O],
+        golds: Batch[P],
+    ) -> None:
+        if phase.evaluator is not None:
+            for callback in self._state.callbacks:
+                callback.on_evaluation_start(self._state)
+
+            golds = golds.to(self._state.device, non_blocking=True)
+
+            with torch.no_grad():
+                predictions = Batch.concat(
+                    [self._state.model.postprocess(output) for output in outputs]
+                )
+
+                phase.evaluator.update(predictions, golds)
+
+            for callback in reversed(self._state.callbacks):
+                callback.on_evaluation_end(self._state)
