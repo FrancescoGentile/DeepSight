@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch.cuda.amp import GradScaler
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ._phase import EpochPhase
 
 
-class State[S, O, A, P](Stateful, Moveable):
+class State[S, O, A, P](Stateful):
     """The state of the training engine."""
 
     def __init__(
@@ -38,8 +38,8 @@ class State[S, O, A, P](Stateful, Moveable):
         self._run_name = run_name
         self._resumed = False
 
-        self._model = model
-        self._phases = phases
+        self._model = model.to(device, non_blocking=True)
+        self._phases = tuple(phase.to(device, non_blocking=True) for phase in phases)
         self._current_phase_idx = 0
         self._timestamp = timestamp
 
@@ -47,7 +47,12 @@ class State[S, O, A, P](Stateful, Moveable):
         self._precision = precision
         self._scaler = scaler
 
-        self._callbacks = callbacks
+        self._callbacks = tuple(
+            callback.to(device, non_blocking=True)
+            if isinstance(callback, Moveable)
+            else callback
+            for callback in callbacks
+        )
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -62,6 +67,10 @@ class State[S, O, A, P](Stateful, Moveable):
     def resumed(self) -> bool:
         """Whether the training is resumed."""
         return self._resumed
+
+    @resumed.setter
+    def resumed(self, resumed: bool) -> None:
+        self._resumed = resumed
 
     @property
     def model(self) -> Model[S, O, A, P]:
@@ -133,6 +142,7 @@ class State[S, O, A, P](Stateful, Moveable):
 
     def state_dict(self) -> StateDict:
         state = {
+            "run_name": self._run_name,
             "model": self._model.state_dict(),
             "phases": [phase.state_dict() for phase in self._phases],
             "current_phase_idx": self._current_phase_idx,
@@ -150,11 +160,10 @@ class State[S, O, A, P](Stateful, Moveable):
         }
 
     def load_state_dict(self, state_dict: StateDict) -> Any:
-        self._resumed = True
-
         utils.set_rng_state(state_dict["rng"])
 
         state_dict = state_dict["state"]
+        self._run_name = state_dict["run_name"]
 
         self._model.load_state_dict(state_dict["model"])
         for phase, phase_state in zip(self._phases, state_dict["phases"], strict=True):
@@ -169,11 +178,3 @@ class State[S, O, A, P](Stateful, Moveable):
         ):
             if isinstance(callback, Stateful):
                 callback.load_state_dict(callback_state)
-
-    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
-        self._device = torch.device(device)
-        self._model = self._model.to(self._device, non_blocking=non_blocking)
-
-        raise NotImplementedError
-
-        return self

@@ -212,17 +212,17 @@ class CrossAttention(nn.Module):
         cpb = cpb.permute(0, 3, 1, 2)  # (B, H, Q, P)
 
         mask = images.mask[:, None, None]  # (B, 1, 1, P)
-        cpb = cpb.masked_fill(mask, -torch.inf)
+        att_mask = cpb.masked_fill_(mask, -torch.inf)
 
         out = F.scaled_dot_product_attention(
             q,
             k,
             v,
-            attn_mask=mask,
+            attn_mask=att_mask,
             dropout_p=self.attn_dropout if self.training else 0.0,
         )
 
-        out = out.view(B, Q, self.num_heads * self.head_dim)
+        out = out.reshape(B, Q, self.num_heads * self.head_dim)
         out = self.out_proj(out)
         out = self.proj_dropout(out)
 
@@ -390,7 +390,7 @@ def _compute_relative_distances(
     y = not_mask.cumsum(1, dtype=torch.float) - 1  # (B, H, W)
 
     patch_cx = torch.stack([x, y], dim=3)  # (B, H, W, 2)
-    patch_cx = patch_cx.view(patch_cx.shape[0], -1, 2)  # (B, HW, 2)
+    patch_cx = patch_cx.view(patch_cx.shape[0], 1, -1, 2)  # (B, 1, HW, 2)
 
     box_cx = boxes.denormalize().to_cxcywh().coordinates[..., :2]  # (B, Q, 2)
     box_cx = box_cx.unsqueeze(2)  # (B, Q, 1, 2)

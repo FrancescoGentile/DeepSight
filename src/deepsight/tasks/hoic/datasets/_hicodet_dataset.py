@@ -94,12 +94,12 @@ class HICODETDataset(Dataset[Sample, Annotations, Predictions]):
     # ---------------------------------------------------------------------- #
 
     def get_object_valid_interactions(self) -> list[list[int]]:
-        """Return for each entity class the interaction classes in which it can participate.
+        """Return for each entity class the interactions in which it can participate.
 
         Returns:
             A list of lists. The list at index `i` contains the interaction
             classes in which the entity class with ID `i` can participate.
-        """  # noqa
+        """
         file = self._path / "actions.json"
         if not file.exists():
             raise RuntimeError("actions.json does not exist.")

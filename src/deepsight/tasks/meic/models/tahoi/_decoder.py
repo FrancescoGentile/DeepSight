@@ -874,7 +874,7 @@ def _compute_relative_distances(
     y = not_mask.cumsum(1, dtype=torch.float) - 1  # (B, H, W)
 
     patch_cx = torch.stack([x, y], dim=3)  # (B, H, W, 2)
-    patch_cx = patch_cx.view(patch_cx.shape[0], -1, 2)  # (B, HW, 2)
+    patch_cx = patch_cx.view(patch_cx.shape[0], 1, -1, 2)  # (B, 1, HW, 2)
 
     box_cx = boxes.denormalize().to_cxcywh().coordinates[..., :2]  # (B, Q, 2)
     box_cx = box_cx.unsqueeze(2)  # (B, Q, 1, 2)

@@ -26,8 +26,6 @@ class RoIAlign(nn.Module):
         self._sampling_ratio = sampling_ratio
         self._aligned = aligned
 
-        raise NotImplementedError
-
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
@@ -100,99 +98,6 @@ def _convert_boxes_to_roi_format(
     return rois
 
 
-def _roi_align(
-    images: Tensor[Literal["B C H W"], float],
-    rois: Tensor[Literal["K 5"], float],
-    pooled_height: int,
-    pooled_width: int,
-    sampling_ratio: int,
-    aligned: bool,
-) -> Tensor[Literal["K C h w"], float]:
-    orig_dtype = images.dtype
-    images = _maybe_cast(images)
-
-    H, W = images.shape[2:]  # noqa: N806
-    ph = torch.arange(pooled_height, device=images.device)
-    pw = torch.arange(pooled_width, device=images.device)
-
-    roi_batch_ind = rois[:, 0].int()  # (K,)
-    offset = 0.5 if aligned else 0.0
-    roi_start_w = rois[:, 1] * -offset  # (K,)
-    roi_start_h = rois[:, 2] * -offset  # (K,)
-    roi_end_w = rois[:, 3] * -offset  # (K,)
-    roi_end_h = rois[:, 4] * -offset  # (K,)
-
-    roi_width = roi_end_w - roi_start_w  # (K,)
-    roi_height = roi_end_h - roi_start_h  # (K,)
-    if not aligned:
-        roi_width = roi_width.clamp(min=1.0)
-        roi_height = roi_height.clamp(min=1.0)
-
-    bin_size_h = roi_height / pooled_height  # (K,)
-    bin_size_w = roi_width / pooled_width  # (K,)
-
-    exact_sampling = sampling_ratio > 0
-
-    if exact_sampling:
-        roi_bin_grid_h = sampling_ratio
-        roi_bin_grid_w = sampling_ratio
-
-        count = max(roi_bin_grid_h * roi_bin_grid_w, 1)
-        iy = torch.arange(roi_bin_grid_h, device=images.device)  # (IY,)
-        ix = torch.arange(roi_bin_grid_w, device=images.device)  # (IX,)
-        ymask, xmask = None, None
-    else:
-        roi_bin_grid_h = torch.ceil(roi_height / pooled_height)
-        roi_bin_grid_w = torch.ceil(roi_width / pooled_width)
-
-        count = torch.clamp(roi_bin_grid_h * roi_bin_grid_w, min=1)
-        iy = torch.arange(H, device=images.device)  # (IY,)
-        ix = torch.arange(W, device=images.device)  # (IX,)
-        ymask = iy[None, :] < roi_bin_grid_h[:, None]  # (K, IY)
-        xmask = ix[None, :] < roi_bin_grid_w[:, None]  # (K, IX)
-
-    def from_k(tensor: torch.Tensor) -> torch.Tensor:
-        return tensor[:, None, None]
-
-    y = (
-        from_k(roi_start_h)
-        + ph[None, :, None] * from_k(bin_size_h)
-        + (iy[None, None, :] + 0.5).to(images.dtype)
-        * from_k(bin_size_h / roi_bin_grid_h)
-    )  # (K, PH, IY)
-    x = (
-        from_k(roi_start_w)
-        + pw[None, :, None] * from_k(bin_size_w)
-        + (ix[None, None, :] + 0.5).to(images.dtype)
-        * from_k(bin_size_w / roi_bin_grid_w)
-    )  # (K, PW, IX)
-    val = _bilinear_interpolate(
-        images, roi_batch_ind, y, x, ymask, xmask
-    )  # (K, C, PH, PW, IY, IX)
-
-    if not exact_sampling:
-        assert ymask is not None
-        assert xmask is not None
-        val = torch.where(ymask[:, None, None, None, :, None], val, 0)
-        val = torch.where(xmask[:, None, None, None, None, :], val, 0)
-
-    output = val.sum((-1, -2))  # remove IY, IX ~> (K, C, PH, PW)
-    if isinstance(count, torch.Tensor):
-        output /= count[:, None, None, None]
-    else:
-        output /= count
-
-    output = output.to(orig_dtype)
-
-    return output
-
-
-def _maybe_cast(tensor: torch.Tensor) -> torch.Tensor:
-    if torch.is_autocast_enabled() and tensor.is_cuda and tensor.dtype != torch.double:
-        return tensor.float()
-    return tensor
-
-
 def _bilinear_interpolate(
     images: Tensor[Literal["B C H W"], float],
     roi_batch_ind: Tensor[Literal["K"], int],
@@ -221,9 +126,6 @@ def _bilinear_interpolate(
     hy = 1.0 - ly
     hx = 1.0 - lx
 
-    # do bilinear interpolation, but respect the masking!
-    # TODO: It's possible the masking here is unnecessary if y and
-    # x were clamped appropriately; hard to tell
     def masked_index(
         y: Tensor[Literal["K PH IY"], float],
         x: Tensor[Literal["K PW IX"], float],
@@ -259,3 +161,104 @@ def _bilinear_interpolate(
 
     val = w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4
     return val
+
+
+def _maybe_cast(tensor: torch.Tensor) -> torch.Tensor:
+    if torch.is_autocast_enabled() and tensor.is_cuda and tensor.dtype != torch.double:
+        return tensor.float()
+    return tensor
+
+
+def _roi_align(
+    images: Tensor[Literal["B C H W"], float],
+    rois: Tensor[Literal["K 5"], float],
+    pooled_height: int,
+    pooled_width: int,
+    sampling_ratio: int,
+    aligned: bool,
+) -> Tensor[Literal["K C h w"], float]:
+    orig_dtype = images.dtype
+
+    images = _maybe_cast(images)
+    rois = _maybe_cast(rois)
+
+    _, _, height, width = images.size()
+
+    ph = torch.arange(pooled_height, device=images.device)  # [PH]
+    pw = torch.arange(pooled_width, device=images.device)  # [PW]
+
+    # input: [N, C, H, W]
+    # rois: [K, 5]
+
+    roi_batch_ind = rois[:, 0].int()  # [K]
+    offset = 0.5 if aligned else 0.0
+    roi_start_w = rois[:, 1] - offset  # [K]
+    roi_start_h = rois[:, 2] - offset  # [K]
+    roi_end_w = rois[:, 3] - offset  # [K]
+    roi_end_h = rois[:, 4] - offset  # [K]
+
+    roi_width = roi_end_w - roi_start_w  # [K]
+    roi_height = roi_end_h - roi_start_h  # [K]
+    if not aligned:
+        roi_width = torch.clamp(roi_width, min=1.0)  # [K]
+        roi_height = torch.clamp(roi_height, min=1.0)  # [K]
+
+    bin_size_h = roi_height / pooled_height  # [K]
+    bin_size_w = roi_width / pooled_width  # [K]
+
+    exact_sampling = sampling_ratio > 0
+
+    if exact_sampling:
+        roi_bin_grid_h = sampling_ratio  # scalar
+        roi_bin_grid_w = sampling_ratio  # scalar
+        count = max(roi_bin_grid_h * roi_bin_grid_w, 1)  # scalar
+
+        iy = torch.arange(roi_bin_grid_h, device=images.device)  # [IY]
+        ix = torch.arange(roi_bin_grid_w, device=images.device)  # [IX]
+        ymask = None
+        xmask = None
+    else:
+        roi_bin_grid_h = torch.ceil(roi_height / pooled_height)  # [K]
+        roi_bin_grid_w = torch.ceil(roi_width / pooled_width)  # [K]
+        count = torch.clamp(roi_bin_grid_h * roi_bin_grid_w, min=1)  # [K]
+
+        iy = torch.arange(height, device=images.device)  # [IY]
+        ix = torch.arange(width, device=images.device)  # [IX]
+        ymask = iy[None, :] < roi_bin_grid_h[:, None]  # [K, IY]
+        xmask = ix[None, :] < roi_bin_grid_w[:, None]  # [K, IX]
+
+    def from_k(t: torch.Tensor) -> torch.Tensor:
+        return t[:, None, None]
+
+    y = (
+        from_k(roi_start_h)
+        + ph[None, :, None] * from_k(bin_size_h)
+        + (iy[None, None, :] + 0.5).to(images.dtype)
+        * from_k(bin_size_h / roi_bin_grid_h)
+    )  # [K, PH, IY]
+    x = (
+        from_k(roi_start_w)
+        + pw[None, :, None] * from_k(bin_size_w)
+        + (ix[None, None, :] + 0.5).to(images.dtype)
+        * from_k(bin_size_w / roi_bin_grid_w)
+    )  # [K, PW, IX]
+    val = _bilinear_interpolate(
+        images, roi_batch_ind, y, x, ymask, xmask
+    )  # [K, C, PH, PW, IY, IX]
+
+    # Mask out samples that weren't actually adaptively needed
+    if not exact_sampling:
+        assert ymask is not None
+        assert xmask is not None
+        val = torch.where(ymask[:, None, None, None, :, None], val, 0)
+        val = torch.where(xmask[:, None, None, None, None, :], val, 0)
+
+    output = val.sum((-1, -2))  # remove IY, IX ~> [K, C, PH, PW]
+    if isinstance(count, torch.Tensor):
+        output /= count[:, None, None, None]
+    else:
+        output /= count
+
+    output = output.to(orig_dtype)
+
+    return output

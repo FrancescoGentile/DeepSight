@@ -34,7 +34,7 @@ class Engine[S, O: Detachable, A, P]:
         self,
         model: Model[S, O, A, P],
         phases: EpochPhase[S, O, A, P] | Iterable[EpochPhase[S, O, A, P]],
-        callbacks: Callback[S, O, A, P] | Iterable[Callback[S, O, A, P]] | None,
+        callbacks: Callback[S, O, A, P] | Iterable[Callback[S, O, A, P]] | None = None,
         device: torch.device | str | None = None,
         precision: Precision = Precision.FP32,
         run_name: str | None = None,
@@ -62,7 +62,7 @@ class Engine[S, O: Detachable, A, P]:
         else:
             scaler = GradScaler(enabled=False)
 
-        state = State(
+        self._state = State(
             run_name=run_name,
             model=model,
             phases=phases,
@@ -72,7 +72,6 @@ class Engine[S, O: Detachable, A, P]:
             scaler=scaler,
             callbacks=callbacks,
         )
-        self._state = state.to(device)
 
         self._max_duration = max_duration
 

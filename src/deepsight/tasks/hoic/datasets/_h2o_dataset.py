@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -56,14 +57,14 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
         self._split = split
         self._transform = transform
 
-        self._samples = self._get_samples()
+        self._samples = self._get_samples(self._path, self._split)
         if max_samples is not None:
             self._samples = self._samples[:max_samples]
 
-        entity_classes = self._get_entity_classes()
+        entity_classes = self._get_entity_classes(self._path)
         self._entity_class_to_id = {name: i for i, name in enumerate(entity_classes)}
 
-        interaction_classes = self._get_interaction_classes()
+        interaction_classes = self._get_interaction_classes(self._path)
         self._interaction_class_to_id = {
             name: i for i, name in enumerate(interaction_classes)
         }
@@ -86,6 +87,48 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
     def human_class_id(self) -> int:
         """The class ID for human entities."""
         return self._entity_class_to_id["person"]
+
+    # ---------------------------------------------------------------------- #
+    # Public Methods
+    # ---------------------------------------------------------------------- #
+
+    def get_object_valid_interactions(
+        self,
+        splits: Iterable[Literal["train", "test"]],
+    ) -> list[list[int]]:
+        """Return for each entity class the interactions in which it can participate.
+
+        !!! warning
+
+            Differently from HICO-DET, the H2O dataset does not provide the list of
+            interaction classes that are valid for a given object, thus this method
+            computes this list from the dataset annotations.
+
+        Args:
+            splits: The splits to consider when computing the valid interactions.
+
+        Returns:
+            A list of lists. The list at index `i` contains the interaction
+            classes in which the entity class with ID `i` can participate.
+        """
+        valid_interactions = [set() for _ in range(self.num_entity_classes)]
+
+        for split in splits:
+            samples = self._get_samples(self._path, split)
+            for sample in samples:
+                for action in sample["actions"]:
+                    object_ = action.get("target", action.get("instrument", None))
+
+                    if object_ is None:
+                        continue
+
+                    object_class = sample["entities"][object_]["category"]
+                    object_class_id = self._entity_class_to_id[object_class]
+                    interaction_class_id = self._interaction_class_to_id[action["verb"]]
+
+                    valid_interactions[object_class_id].add(interaction_class_id)
+
+        return [list(interactions) for interactions in valid_interactions]
 
     # ---------------------------------------------------------------------- #
     # Magic Methods
@@ -156,18 +199,21 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
     # Private Methods
     # ---------------------------------------------------------------------- #
 
-    def _get_samples(self) -> list[FileSample]:
-        with open(self._path / f"{self._split}.json") as file:
+    @staticmethod
+    def _get_samples(path: Path, split: str) -> list[FileSample]:
+        with open(path / f"{split}.json") as file:
             data = json.load(file)
 
         return [s for s in data if len(s["entities"]) > 0]
 
-    def _get_entity_classes(self) -> list[str]:
-        with open(self._path / "categories.json") as file:
+    @staticmethod
+    def _get_entity_classes(path: Path) -> list[str]:
+        with open(path / "categories.json") as file:
             return json.load(file)
 
-    def _get_interaction_classes(self) -> list[str]:
-        with open(self._path / "verbs.json") as file:
+    @staticmethod
+    def _get_interaction_classes(path: Path) -> list[str]:
+        with open(path / "verbs.json") as file:
             return json.load(file)
 
 

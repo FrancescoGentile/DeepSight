@@ -30,10 +30,10 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         self._capture_library_logs = capture_library_logs
 
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._logger.setLevel(level)
 
         if console:
             handler = logging.StreamHandler()
-            handler.setLevel(level)
             handler.setFormatter(_get_formatter())
             self._logger.addHandler(handler)
 
@@ -54,6 +54,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
                 else:
                     handler = logging.FileHandler(self._output_file, mode="a")
             else:
+                Path(self._output_file).parent.mkdir(parents=True, exist_ok=True)
                 handler = logging.FileHandler(self._output_file, mode="w+")
                 log_start = True
 
@@ -74,7 +75,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         self._logger.info(f"Epoch {state.timestamp.num_epochs + 1} started.")
 
     def on_phase_start(self, state: State[S, O, A, P]) -> None:
-        self._logger.info(f"Phase {state.current_phase.label} started.")
+        self._logger.info(f"Phase '{state.current_phase.label}' started.")
         if state.current_phase.criterion is not None:
             self._losses = {
                 loss.name: 0.0
@@ -93,7 +94,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
     def on_phase_end(self, state: State[S, O, A, P]) -> None:
         phase = state.current_phase
-        self._logger.info(f"Phase {phase.label} finished.")
+        self._logger.info(f"Phase '{phase.label}' finished.")
 
         if self._losses is not None:
             self._logger.info("Losses:")

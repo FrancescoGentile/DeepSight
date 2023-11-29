@@ -5,18 +5,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Self
 
+import torch
 from torch.optim import Optimizer
 
 from deepsight import utils
 from deepsight.core import Criterion, Evaluator
 from deepsight.training import DataLoader
-from deepsight.training.schedulers import LRScheduler
-from deepsight.typing import StateDict, Stateful
+from deepsight.typing import Moveable, StateDict, Stateful
 
 from ._misc import ClipGradNorm, ClipGradValue
-from ._state import State
+
+if TYPE_CHECKING:
+    from deepsight.training.schedulers import LRScheduler
+
+    from ._state import State
 
 # --------------------------------------------------------------------------- #
 # Training Phase
@@ -107,7 +111,10 @@ class TrainingPhase[S, O, A, P](Stateful):
 
     def should_run(self, state: State[S, O, A, P]) -> bool:
         """Return whether the phase should run."""
-        raise NotImplementedError
+        if isinstance(self._run_interval, int):
+            return (state.timestamp.num_epochs + 1) % self._run_interval == 0
+        else:
+            return self._run_interval(state)
 
     def state_dict(self) -> StateDict:
         return {
@@ -143,6 +150,31 @@ class TrainingPhase[S, O, A, P](Stateful):
             ):
                 if isinstance(scheduler, Stateful):
                     scheduler.load_state_dict(scheduler_state)
+
+    def to(self, device: str | torch.device, *, non_blocking: bool = False) -> Self:
+        """Move in-place the phase to the specified device."""
+        if isinstance(self._criterion, Moveable):
+            self._criterion = self._criterion.to(device, non_blocking=non_blocking)
+
+        self._optimizers = tuple(
+            optimizer.to(device, non_blocking=non_blocking)
+            if isinstance(optimizer, Moveable)
+            else optimizer
+            for optimizer in self._optimizers
+        )
+
+        if self._schedulers is not None:
+            self._schedulers = tuple(
+                scheduler.to(device, non_blocking=non_blocking)
+                if isinstance(scheduler, Moveable)
+                else scheduler
+                for scheduler in self._schedulers
+            )
+
+        if isinstance(self._evaluator, Moveable):
+            self._evaluator = self._evaluator.to(device, non_blocking=non_blocking)
+
+        return self
 
 
 # --------------------------------------------------------------------------- #
@@ -197,7 +229,10 @@ class EvaluationPhase[S, O, A, P](Stateful):
 
     def should_run(self, state: State[S, O, A, P]) -> bool:
         """Return whether the phase should run."""
-        raise NotImplementedError
+        if isinstance(self._run_interval, int):
+            return (state.timestamp.num_epochs + 1) % self._run_interval == 0
+        else:
+            return self._run_interval(state)
 
     def state_dict(self) -> StateDict:
         return {
@@ -218,6 +253,16 @@ class EvaluationPhase[S, O, A, P](Stateful):
 
         if isinstance(self._criterion, Stateful):
             self._criterion.load_state_dict(state_dict["criterion"])
+
+    def to(self, device: str | torch.device, *, non_blocking: bool = False) -> Self:
+        """Move in-place the phase to the specified device."""
+        if isinstance(self._evaluator, Moveable):
+            self._evaluator = self._evaluator.to(device, non_blocking=non_blocking)
+
+        if isinstance(self._criterion, Moveable):
+            self._criterion = self._criterion.to(device, non_blocking=non_blocking)
+
+        return self
 
 
 # --------------------------------------------------------------------------- #

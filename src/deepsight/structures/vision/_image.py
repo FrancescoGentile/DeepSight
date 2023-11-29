@@ -35,7 +35,7 @@ class Image(Moveable):
             The image.
         """
         image = PILImage.open(str(path)).convert("RGB")
-        image = np.asarray(image)
+        image = np.array(image)  # if np.asarray is used, the array is not writable
         image = torch.from_numpy(image).permute(2, 0, 1)
 
         return cls(image)
