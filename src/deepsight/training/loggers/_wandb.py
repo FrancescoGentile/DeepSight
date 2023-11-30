@@ -45,8 +45,9 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         self._log_every_n_steps = log_every_n_steps
 
         self._id: str | None = None
-        self._total_batch_size = 0
-        self._losses: dict[str, float] = {}
+
+        self._total_batch_size: dict[str, int]
+        self._losses: dict[str, dict[str, float]]
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -62,6 +63,9 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         for label in self._log_phases:
             if label not in all_labels:
                 raise ValueError(f"Cannot log phase '{label}' as it does not exist.")
+
+        self._total_batch_size = {phase.label: 0 for phase in state.phases}
+        self._losses = {phase.label: {} for phase in state.phases}
 
         wandb.init(
             name=self._name,
@@ -87,15 +91,16 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         wandb.log({"epoch": state.timestamp.num_epochs + 1})
 
     def on_step_loss(self, state: State[S, O, A, P], losses: BatchLosses) -> None:
-        if state.current_phase.label not in self._log_phases:
+        label = state.current_phase.label
+        if label not in self._log_phases:
             return
 
-        self._total_batch_size += losses.batch_size
+        self._total_batch_size[label] += losses.batch_size
         for name, value in losses.items():
             if name not in self._losses:
-                self._losses[name] = 0.0
+                self._losses[label][name] = 0.0
 
-            self._losses[name] += value.item() * losses.batch_size
+            self._losses[label][name] += value.item() * losses.batch_size
 
     def on_step_end(self, state: State[S, O, A, P]) -> None:
         label = state.current_phase.label
@@ -111,8 +116,8 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         commit_info = {}
         commit_info[f"{label}/step"] = step
 
-        for name, value in self._losses.items():
-            value /= self._total_batch_size
+        for name, value in self._losses[label].items():
+            value /= self._total_batch_size[label]
             commit_info[f"{label}/losses/{name}"] = value
             total_loss += value
 
@@ -124,8 +129,8 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         commit_info[f"{label}/losses/total"] = total_loss
         wandb.log(commit_info)
 
-        self._total_batch_size = 0
-        self._losses = {}
+        self._total_batch_size[label]
+        self._losses[label] = {}
 
     def on_phase_end(self, state: State[S, O, A, P]) -> None:
         label = state.current_phase.label
@@ -143,14 +148,14 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         else:
             if len(self._losses) > 0:
                 total_loss = 0.0
-                for name, value in self._losses.items():
-                    value /= self._total_batch_size
+                for name, value in self._losses[label].items():
+                    value /= self._total_batch_size[label]
                     total_loss += value
                     commit_info[f"{label}/losses/{name}"] = value
 
                 commit_info[f"{label}/losses/total"] = total_loss
-                self._total_batch_size = 0
-                self._losses = {}
+                self._total_batch_size[label] = 0
+                self._losses[label] = {}
 
             evaluator = state.current_phase.evaluator
             for name, value in evaluator.compute_numeric_metrics().items():
