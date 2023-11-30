@@ -6,13 +6,17 @@ import abc
 from typing import overload
 
 from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.typing import Configs, Configurable
 
 
-class Transform(abc.ABC):
+class Transform(abc.ABC, Configurable):
     @abc.abstractmethod
     def _apply(
         self, image: Image, boxes: BoundingBoxes | None
     ) -> tuple[Image, BoundingBoxes | None]: ...
+
+    @abc.abstractmethod
+    def get_configs(self, recursive: bool) -> Configs: ...
 
     # ----------------------------------------------------------------------- #
     # Magic methods

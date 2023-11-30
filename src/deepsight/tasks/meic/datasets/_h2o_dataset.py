@@ -10,15 +10,16 @@ from typing import Literal, TypedDict
 
 import torch
 
+from deepsight import utils
 from deepsight.core import Dataset
 from deepsight.ops.geometric import coalesce
 from deepsight.structures.vision import BoundingBoxes, BoundingBoxFormat, Image
 from deepsight.tasks.meic import Annotations, Predictions, Sample
 from deepsight.transforms.vision import Transform
-from deepsight.typing import PathLike
+from deepsight.typing import Configs, Configurable, PathLike
 
 
-class H2ODataset(Dataset[Sample, Annotations, Predictions]):
+class H2ODataset(Dataset[Sample, Annotations, Predictions], Configurable):
     """A Multi-Entity Interaction dataset extracted from H2O."""
 
     # ----------------------------------------------------------------------- #
@@ -90,6 +91,18 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
     def human_class_id(self) -> int:
         """The class ID of the human entity."""
         return self._entity_class_to_id["person"]
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        configs: Configs = {"split": self._split}
+
+        if recursive and self._transform is not None:
+            configs["transform"] = utils.get_configs(self._transform, recursive)
+
+        return configs
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
@@ -171,6 +184,14 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
         )
 
         return sample, annotations, target
+
+    def __str__(self) -> str:
+        return "H2O Multi-Entity Dataset"
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(split={self._split}, num_samples={len(self)})"
+        )
 
     # ----------------------------------------------------------------------- #
     # Private Methods

@@ -10,7 +10,7 @@ import torch.nn.functional as F  # noqa: N812
 
 from deepsight import utils
 from deepsight.structures.vision import BoundingBoxes, Image
-from deepsight.typing import str_enum
+from deepsight.typing import Configs, str_enum
 
 from ._base import Transform
 
@@ -96,6 +96,14 @@ class Resize(Transform):
 
         return new_image, boxes
 
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "size": self.size,
+            "max_size": self.max_size,
+            "interpolation": self.interpolation,
+            "antialias": self.antialias,
+        }
+
 
 class RandomShortestSize(Transform):
     """Resize the input image such that the shorter edge is equal to a random value."""
@@ -165,3 +173,11 @@ class RandomShortestSize(Transform):
             boxes = boxes.resize((new_height, new_width))
 
         return new_image, boxes
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "min_size": self.min_size,
+            "max_size": self.max_size,
+            "interpolation": self.interpolation,
+            "antialias": self.antialias,
+        }

@@ -5,7 +5,9 @@
 import random
 from collections.abc import Iterable, Sequence
 
+from deepsight import utils
 from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.typing import Configs
 
 from ._base import Transform
 
@@ -32,6 +34,16 @@ class SequentialOrder(Transform):
 
         return output
 
+    def get_configs(self, recursive: bool) -> Configs:
+        if not recursive:
+            return {}
+
+        return {
+            "transforms": [
+                utils.get_configs(transform, recursive) for transform in self.transforms
+            ]
+        }
+
 
 class RandomOrder(Transform):
     """Randomly apply a list of transforms."""
@@ -55,6 +67,16 @@ class RandomOrder(Transform):
             output = self.transforms[index]._apply(*output)
 
         return output
+
+    def get_configs(self, recursive: bool) -> Configs:
+        if not recursive:
+            return {}
+
+        return {
+            "transforms": [
+                utils.get_configs(transform, recursive) for transform in self.transforms
+            ]
+        }
 
 
 class RandomApply(Transform):
@@ -83,6 +105,13 @@ class RandomApply(Transform):
             return self.transform._apply(image, boxes)
 
         return image, boxes
+
+    def get_configs(self, recursive: bool) -> Configs:
+        configs: Configs = {"p": self.p}
+        if recursive:
+            configs["transform"] = utils.get_configs(self.transform, recursive)
+
+        return configs
 
 
 class RandomChoice(Transform):
@@ -122,3 +151,12 @@ class RandomChoice(Transform):
     ) -> tuple[Image, BoundingBoxes | None]:
         transform = random.choices(self.transforms, weights=self.p)[0]
         return transform._apply(image, boxes)
+
+    def get_configs(self, recursive: bool) -> Configs:
+        configs: Configs = {"p": self.p}
+        if recursive:
+            configs["transforms"] = [
+                utils.get_configs(transform, recursive) for transform in self.transforms
+            ]
+
+        return configs

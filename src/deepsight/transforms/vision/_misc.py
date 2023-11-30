@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import torch
 
 from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.typing import Configs
 
 from ._base import Transform
 
@@ -46,6 +47,12 @@ class ToDtype(Transform):
             new_image = new_image / 255.0
 
         return Image(new_image), boxes
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "dtype": self.dtype,
+            "scale": self.scale,
+        }
 
 
 class Standardize(Transform):
@@ -99,3 +106,10 @@ class Standardize(Transform):
         data.sub_(mean).div_(std)
 
         return Image(data), boxes
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "mean": self.mean,
+            "std": self.std,
+            "inplace": self.inplace,
+        }
