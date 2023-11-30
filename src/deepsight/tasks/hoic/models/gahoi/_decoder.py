@@ -123,7 +123,12 @@ class GraphAttention(nn.Module):
         messages = messages.view(-1, self.num_heads, self.head_dim)
         messages = messages * attn_scores.unsqueeze(-1)
 
-        messages = scatter_sum(messages, graphs.adjacency_matrix().indices()[0], dim=0)
+        messages = scatter_sum(
+            messages,
+            graphs.adjacency_matrix().indices()[0],
+            dim=0,
+            dim_output_size=graphs.num_nodes(),
+        )
         messages = messages.view(-1, self.num_heads * self.head_dim)
 
         out = self.out_proj(messages)
