@@ -3,14 +3,13 @@
 ##
 
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Literal
 
 import torch
-from torch import Tensor
 from typing_extensions import Self
 
 from deepsight.structures.vision import BoundingBoxes, Image
-from deepsight.typing import Moveable
+from deepsight.typing import Moveable, Tensor
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +25,7 @@ class Sample(Moveable):
 
     image: Image
     entity_boxes: BoundingBoxes
-    entity_labels: Annotated[Tensor, "N", int]
+    entity_labels: Tensor[Literal["N"], int]
 
     @property
     def device(self) -> torch.device:
@@ -66,9 +65,9 @@ class Annotations(Moveable):
             entities.
     """
 
-    interactions: Annotated[Tensor, "N H", bool]
-    interaction_labels: Annotated[Tensor, "H C", float]
-    binary_interactions: Annotated[Tensor, "3 E", bool]
+    interactions: Tensor[Literal["N H"], bool]
+    interaction_labels: Tensor[Literal["H C"], float]
+    binary_interactions: Tensor[Literal["3 E"], bool]
 
     @property
     def device(self) -> torch.device:
@@ -117,10 +116,10 @@ class Predictions(Moveable):
             greater than 1.0).
     """
 
-    interactions: Annotated[Tensor, "N H", bool]
-    interaction_labels: Annotated[Tensor, "H C", float]
-    binary_interactions: Annotated[Tensor, "2 E", int]
-    binary_interaction_labels: Annotated[Tensor, "E C", float]
+    interactions: Tensor[Literal["N H"], bool]
+    interaction_labels: Tensor[Literal["H C"], float]
+    binary_interactions: Tensor[Literal["2 E"], int]
+    binary_interaction_labels: Tensor[Literal["E C"], float]
 
     @property
     def device(self) -> torch.device:

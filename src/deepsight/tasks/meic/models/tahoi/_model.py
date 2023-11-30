@@ -137,22 +137,24 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         binary_interactions = output.layers[-1].binary_interactions
 
         labels = torch.sigmoid(logits)
-        binary_labels = labels[output.layers[-1].binary_interactions[2]]
+        binary_labels = labels[binary_interactions[2]]
         binary_labels = torch.sigmoid(binary_logits).unsqueeze(1) * binary_labels
 
         labels = labels.split_with_sizes(num_hedges)
         binary_labels = binary_labels.split_with_sizes(num_binary_edges)
+        binary_interactions = binary_interactions.split_with_sizes(
+            num_binary_edges, dim=1
+        )
 
         predictions: list[Predictions] = []
-        node_offset, hedge_offset, binary_offset = 0, 0, 0
+        node_offset, hedge_offset = 0, 0
         for idx in range(len(num_nodes)):
             node_limit = node_offset + num_nodes[idx]
             edge_limit = hedge_offset + num_hedges[idx]
-            binary_limit = binary_offset + num_binary_edges[idx]
 
             bm = bbm[node_offset:node_limit, hedge_offset:edge_limit]
 
-            bindices = binary_interactions[:2, binary_offset:binary_limit] - node_offset
+            bindices = binary_interactions[idx] - node_offset
 
             if bindices.shape[1] > 0:
                 bindices, blabels = coalesce(bindices, binary_labels[idx], reduce="max")
@@ -161,7 +163,6 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
 
             node_offset = node_limit
             hedge_offset = edge_limit
-            binary_offset = binary_limit
 
             predictions.append(Predictions(bm, labels[idx], bindices, blabels))
 

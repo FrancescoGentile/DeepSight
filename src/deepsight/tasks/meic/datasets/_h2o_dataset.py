@@ -149,7 +149,7 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions]):
             binary_interactions = torch.as_tensor(binary_interactions).transpose_(0, 1)
             binary_indices, binary_labels = coalesce(
                 indices=binary_interactions[:2],
-                values=interaction_labels,
+                values=interaction_labels[binary_interactions[2]],
                 reduce="max",
             )
         else:
