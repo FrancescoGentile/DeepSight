@@ -21,7 +21,7 @@ from deepsight.typing import Configurable, StateDict, Stateful
 class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
     def __init__(
         self,
-        name: str = "{run_name}",
+        name: str | None = "{run_name}",
         project: str | None = None,
         entity: str | None = None,
         tags: list[str] | None = None,
@@ -54,7 +54,8 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
     # ----------------------------------------------------------------------- #
 
     def on_init(self, state: State[S, O, A, P]) -> None:
-        name = self._name.format(run_name=state.run_name)
+        if self._name is not None:
+            self._name = self._name.format(run_name=state.run_name)
         if len(self._log_phases) == 0:
             self._log_phases = {phase.label for phase in state.phases}
 
@@ -64,7 +65,7 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
                 raise ValueError(f"Cannot log phase '{label}' as it does not exist.")
 
         wandb.init(
-            name=name,
+            name=self._name,
             project=self._project,
             entity=self._entity,
             tags=self._tags,
@@ -80,18 +81,6 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
     def on_epoch_start(self, state: State[S, O, A, P]) -> None:
         wandb.log({"epoch": state.timestamp.num_epochs + 1})
-
-    def on_step_start(self, state: State[S, O, A, P]) -> None:
-        label = state.current_phase.label
-        step = state.current_phase_timestamp.num_batches + 1
-        if label not in self._log_phases:
-            return
-        if step % self._log_every_n_steps != 0:
-            return
-        if isinstance(state.current_phase, EvaluationPhase):
-            return
-
-        wandb.log({f"{label}/step": step}, commit=False)
 
     def on_step_loss(self, state: State[S, O, A, P], losses: BatchLosses) -> None:
         if state.current_phase.label not in self._log_phases:
@@ -115,13 +104,21 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             return
 
         total_loss = 0.0
+        commit_info = {}
+        commit_info[f"{label}/step"] = step
+
         for name, value in self._losses.items():
             value /= self._total_batch_size
-            wandb.log({f"{label}/losses/{name}": value}, commit=False)
+            commit_info[f"{label}/losses/{name}"] = value
             total_loss += value
 
-        wandb.log({f"{label}/losses/total": total_loss}, commit=False)
-        wandb.log({}, commit=True)
+        for optim_idx, optimizer in enumerate(state.current_phase.optimizers):
+            for group_idx, group in enumerate(optimizer.param_groups):
+                key = f"{label}/learning_rates/optimizer_{optim_idx}.param_group_{group_idx}"  # noqa: E501
+                commit_info[key] = group["lr"]
+
+        commit_info[f"{label}/losses/total"] = total_loss
+        wandb.log(commit_info)
 
         self._total_batch_size = 0
         self._losses = {}
@@ -131,30 +128,31 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         if label not in self._log_phases:
             return
 
+        commit_info = {}
         if isinstance(state.current_phase, TrainingPhase):
             if state.current_phase.evaluator is None:
                 return
 
             evaluator = state.current_phase.evaluator
             for name, value in evaluator.compute_numeric_metrics().items():
-                wandb.log({f"{label}/metrics/{name}": value}, commit=False)
+                commit_info[f"{label}/metrics/{name}"] = value
         else:
             if len(self._losses) > 0:
                 total_loss = 0.0
                 for name, value in self._losses.items():
                     value /= self._total_batch_size
-                    wandb.log({f"{label}/losses/{name}": value}, commit=False)
                     total_loss += value
+                    commit_info[f"{label}/losses/{name}"] = value
 
-                wandb.log({f"{label}/losses/total": total_loss}, commit=False)
+                commit_info[f"{label}/losses/total"] = total_loss
                 self._total_batch_size = 0
                 self._losses = {}
 
             evaluator = state.current_phase.evaluator
             for name, value in evaluator.compute_numeric_metrics().items():
-                wandb.log({f"{label}/metrics/{name}": value}, commit=False)
+                commit_info[f"{label}/metrics/{name}"] = value
 
-        wandb.log({}, commit=True)
+        wandb.log(commit_info)
 
     def on_fit_end(
         self,
@@ -163,7 +161,11 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
     ) -> None:
         if isinstance(error, Exception):
             # the training was interrupted by an error
-            wandb.alert(title="Error", text=error)
+            wandb.alert(
+                title="Training Error",
+                text=str(error),
+                level=wandb.AlertLevel.ERROR,
+            )
             wandb.finish(exit_code=1)
         else:
             # The training was completed successfully or interrupted by the user.
@@ -216,6 +218,14 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
                     summary="min",
                     step_metric=f"{phase.label}/step",
                 )
+
+                # log learning rate
+                for optim_idx, optimizer in enumerate(phase.optimizers):
+                    for group_idx in range(len(optimizer.param_groups)):
+                        wandb.define_metric(
+                            f"{phase.label}/learning_rates/optimizer_{optim_idx}.param_group_{group_idx}",
+                            step_metric=f"{phase.label}/step",
+                        )
 
                 if phase.evaluator is not None:
                     for metric in phase.evaluator.get_metrics_info():

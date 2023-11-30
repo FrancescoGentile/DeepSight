@@ -417,6 +417,7 @@ class HyperGraphStructureLearning(nn.Module):
         coboundary_matrix = coboundary_matrix.bool()
         edge_indices = (
             torch.arange(coboundary_matrix.shape[0], device=coboundary_matrix.device)
+            .add_(1)
             .unsqueeze_(-1)
             .repeat((1, coboundary_matrix.shape[1]))
         )  # (M, N)
@@ -425,13 +426,17 @@ class HyperGraphStructureLearning(nn.Module):
 
         num_edges: list[int] = []
         bm_sizes: list[int] = []
-        node_offset = 0
-        edge_offset = 0
-        for idx, nnodes in enumerate(num_nodes):
+        node_offset, edge_offset, max_edge_idx = 0, 0, 0
+        for nnodes in num_nodes:
             node_limit = node_offset + nnodes
-            nedges = int(max_edge_indices[node_offset:node_limit].max().item()) + 1
-            if idx > 0:
-                nedges -= num_edges[-1]
+            new_max_edge = int(max_edge_indices[node_offset:node_limit].max().item())
+            if new_max_edge == 0:
+                # there are no hyperedges for this sample
+                nedges = 0
+            else:
+                nedges = new_max_edge - max_edge_idx
+                max_edge_idx = new_max_edge
+
             num_edges.append(nedges)
             edge_limit = edge_offset + nedges
             bm_size = int(
@@ -513,6 +518,7 @@ class HyperGraphStructureLearning(nn.Module):
             clusters = coboundary_matrix.mm(nodes)  # (M, D)
             clusters_dim = coboundary_matrix.sum(-1, keepdim=True)  # (M, 1)
             clusters = clusters / clusters_dim
+            clusters = F.normalize(clusters, dim=-1)
 
             clusters_mask = (
                 coboundary_matrix.mm(mask_float).mm(coboundary_matrix.T).bool()

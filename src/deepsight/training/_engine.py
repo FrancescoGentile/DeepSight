@@ -156,6 +156,9 @@ class Engine[S, O: Detachable, A, P]:
         self._state.model.eval()
 
         for samples, annotations, golds in phase.dataloader:
+            for callback in self._state.callbacks:
+                callback.on_step_start(self._state)
+
             samples = samples.to(self._state.device, non_blocking=True)
             annotations = annotations.to(self._state.device, non_blocking=True)
             golds = golds.to(self._state.device, non_blocking=True)

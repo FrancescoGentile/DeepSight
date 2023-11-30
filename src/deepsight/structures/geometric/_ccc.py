@@ -569,7 +569,7 @@ class CombinatorialComplex:
                     f"Expected a rank between 0 and {self.rank}, got {rank}."
                 )
 
-            if isinstance(cell_feature, Tensor):
+            if isinstance(cell_feature, torch.Tensor):
                 match cell_feature.ndim:
                     case 2:
                         if cell_feature.shape[0] != cell_features[rank].shape[0]:
