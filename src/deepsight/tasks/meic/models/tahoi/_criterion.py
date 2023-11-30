@@ -14,12 +14,12 @@ from deepsight import utils
 from deepsight.core import Batch, LossInfo
 from deepsight.core import Criterion as _Criterion
 from deepsight.tasks.meic import Annotations
-from deepsight.typing import Losses
+from deepsight.typing import Configs, Configurable, Losses
 
 from ._structures import GTClusters, HCStep, Output
 
 
-class Criterion(_Criterion[Output, Annotations]):
+class Criterion(_Criterion[Output, Annotations], Configurable):
     def __init__(
         self,
         layer_indices: int | Iterable[int],
@@ -98,6 +98,19 @@ class Criterion(_Criterion[Output, Annotations]):
             )
 
         return tuple(losses)
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "layer_indices": self.layer_indices,
+            "jaccard_weight": self.jaccard_weight,
+            "similarity_weight": self.similarity_weight,
+            "focal_loss_alpha": self.focal_loss_alpha,
+            "focal_loss_gamma": self.focal_loss_gamma,
+            "similarity_thresholds": self.similarity_thresholds,
+            "focal_loss_weight": self.focal_loss_weight,
+            "bce_loss_weight": self.bce_loss_weight,
+            "hc_loss_weight": self.hc_loss_weight,
+        }
 
     def compute(self, output: Output, annotations: Batch[Annotations]) -> Losses:
         losses = {}

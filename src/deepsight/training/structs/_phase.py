@@ -13,7 +13,7 @@ from torch.optim import Optimizer
 from deepsight import utils
 from deepsight.core import Criterion, Evaluator
 from deepsight.training import DataLoader
-from deepsight.typing import Moveable, StateDict, Stateful
+from deepsight.typing import Configs, Configurable, Moveable, StateDict, Stateful
 
 from ._misc import ClipGradNorm, ClipGradValue
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # --------------------------------------------------------------------------- #
 
 
-class TrainingPhase[S, O, A, P](Stateful):
+class TrainingPhase[S, O, A, P](Stateful, Configurable):
     """A training-like epoch phase."""
 
     def __init__(
@@ -176,13 +176,43 @@ class TrainingPhase[S, O, A, P](Stateful):
 
         return self
 
+    def get_configs(self, recursive: bool) -> Configs:
+        configs: Configs = {
+            "label": self._label,
+            "accumulation_steps": self._accumulation_steps,
+        }
+
+        if self._clip_gradient is not None:
+            configs["clip_gradient"] = utils.get_configs(self._clip_gradient, recursive)
+
+        if isinstance(self._run_interval, int):
+            configs["run_interval"] = self._run_interval
+
+        if recursive:
+            configs["dataloader"] = self._dataloader.get_configs(recursive)
+            configs["criterion"] = utils.get_configs(self._criterion, recursive)
+            configs["optimizers"] = [
+                utils.get_configs(optimizer, recursive)
+                for optimizer in self._optimizers
+            ]
+            if self._schedulers is not None:
+                configs["schedulers"] = [
+                    utils.get_configs(scheduler, recursive)
+                    for scheduler in self._schedulers
+                ]
+
+            if self._evaluator is not None:
+                configs["evaluator"] = utils.get_configs(self._evaluator, recursive)
+
+        return configs
+
 
 # --------------------------------------------------------------------------- #
 # Evaluation Phase
 # --------------------------------------------------------------------------- #
 
 
-class EvaluationPhase[S, O, A, P](Stateful):
+class EvaluationPhase[S, O, A, P](Stateful, Configurable):
     """An evaluation-like epoch phase."""
 
     def __init__(
@@ -263,6 +293,20 @@ class EvaluationPhase[S, O, A, P](Stateful):
             self._criterion = self._criterion.to(device, non_blocking=non_blocking)
 
         return self
+
+    def get_configs(self, recursive: bool) -> Configs:
+        configs: Configs = {"label": self._label}
+
+        if isinstance(self._run_interval, int):
+            configs["run_interval"] = self._run_interval
+
+        if recursive:
+            configs["dataloader"] = self._dataloader.get_configs(recursive)
+            configs["evaluator"] = utils.get_configs(self._evaluator, recursive)
+            if self._criterion is not None:
+                configs["criterion"] = utils.get_configs(self._criterion, recursive)
+
+        return configs
 
 
 # --------------------------------------------------------------------------- #

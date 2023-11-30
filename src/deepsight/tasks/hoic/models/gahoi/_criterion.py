@@ -43,7 +43,7 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
     # Public methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self) -> Configs:
+    def get_configs(self, recursive: bool) -> Configs:
         return {
             "suppression_alpha": self.suppression_alpha,
             "suppression_gamma": self.suppression_gamma,

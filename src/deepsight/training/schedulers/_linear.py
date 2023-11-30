@@ -33,8 +33,10 @@ class LinearLR(LRScheduler, Configurable, Stateful):
 
         super().__init__(optimizer)
         self._steps = steps
-        self._start_step = None
-        self._start_lrs = None
+        self._start_step = -steps
+        self._start_lrs = tuple(
+            param_group["lr"] for param_group in self._optimizer.param_groups
+        )
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -42,12 +44,7 @@ class LinearLR(LRScheduler, Configurable, Stateful):
 
     def compute_lrs(self, timestamp: EpochPhaseTimestamp) -> tuple[float, ...]:
         step = timestamp.num_batches
-        if self._start_step is None or self._start_lrs is None:
-            self._start_step = step
-            self._start_lrs = tuple(
-                param_group["lr"] for param_group in self._optimizer.param_groups
-            )
-        elif step - self._start_step > self._steps:
+        if step - self._start_step >= self._steps:
             self._start_step = step
             self._start_lrs = tuple(
                 param_group["lr"] for param_group in self._optimizer.param_groups
@@ -56,7 +53,7 @@ class LinearLR(LRScheduler, Configurable, Stateful):
         factor = 1 - (step - self._start_step) / self._steps
         return tuple(lr * factor for lr in self._start_lrs)
 
-    def get_configs(self) -> Configs:
+    def get_configs(self, recursive: bool) -> Configs:
         return {"steps": self._steps}
 
     def state_dict(self) -> StateDict:

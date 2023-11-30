@@ -6,7 +6,6 @@ from collections.abc import Iterable
 from typing import Any
 
 import wandb
-
 from deepsight import utils
 from deepsight.training.callbacks import Callback
 from deepsight.training.structs import (
@@ -15,7 +14,7 @@ from deepsight.training.structs import (
     State,
     TrainingPhase,
 )
-from deepsight.typing import Configurable, StateDict, Stateful
+from deepsight.typing import StateDict, Stateful
 
 
 class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
@@ -70,7 +69,12 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             entity=self._entity,
             tags=self._tags,
             notes=self._notes,
-            config=self._get_configs(state),
+            config={
+                "model": utils.get_configs(state.model, recursive=True),
+                "phases": [
+                    utils.get_configs(phase, recursive=True) for phase in state.phases
+                ],
+            },
             resume=False if self._id is None else "must",
             id=self._id,
         )
@@ -188,15 +192,6 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
-
-    def _get_configs(self, state: State[S, O, A, P]) -> dict[str, Any]:
-        model = {"__class__": state.model.__class__.__qualname__}
-        if isinstance(state.model, Configurable):
-            model.update(state.model.get_configs())
-
-        return {
-            "model": model,
-        }
 
     def _define_plots(self, state: State[S, O, A, P]) -> None:
         wandb.define_metric("epoch", summary="max")

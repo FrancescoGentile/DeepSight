@@ -42,8 +42,15 @@ class Moveable(Protocol):
 class Configurable(Protocol):
     """An interface for objects that can be configured."""
 
-    def get_configs(self) -> Configs:
-        """Get the configuration of this object."""
+    def get_configs(self, recursive: bool) -> Configs:
+        """Get the configuration of this object.
+
+        Args:
+            recursive: Whether to recursively get the configuration of this object.
+                For example, if this object has a child object that is configurable,
+                then the configuration of the child object will be included in the
+                returned configuration.
+        """
         ...
 
 

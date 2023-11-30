@@ -2,6 +2,9 @@
 ##
 ##
 
+import hashlib
+import pickle
+import random
 from collections import Counter
 from collections.abc import Iterable
 from typing import Callable
@@ -54,13 +57,34 @@ class Engine[S, O: Detachable, A, P]:
         else:
             device = torch.device(device)
 
-        if run_name is None:
-            run_name = coolname.generate_slug(2)
-
         if device.type == "cuda" and precision.is_mixed_precision():
             scaler = GradScaler()
         else:
             scaler = GradScaler(enabled=False)
+
+        if run_name is None:
+            # If the run name is not specified, we need to generate a random one.
+            # A simple approach woul be to call `coolname.generate_slug()`, but
+            # if the user sets the same seed, the same name will be generated.
+            # We want run with the same engine configurations to have the same name,
+            # while different configurations should have different names.
+            # So, we hash the engine configurations to generate the new seed to be used
+            # to generate the run name.
+            configs = {
+                "model": utils.get_configs(model, recursive=True),
+                "phases": [
+                    utils.get_configs(phase, recursive=True) for phase in phases
+                ],
+            }
+            digest = hashlib.sha256(pickle.dumps(configs)).hexdigest()
+
+            random_rng_state = random.getstate()
+            random.seed(digest)
+            run_name = coolname.generate_slug(2)
+            random.setstate(random_rng_state)
+
+        elif len(run_name) == 0:
+            raise ValueError("The run name cannot be empty.")
 
         self._state = State(
             run_name=run_name,

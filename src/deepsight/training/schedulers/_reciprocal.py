@@ -78,7 +78,7 @@ class ReciprocalLR(LRScheduler, Configurable):
         factor = (self._warmup_steps / (step + 1)) ** 0.5
         return tuple(lr * factor for lr in self._max_lr)
 
-    def get_configs(self) -> Configs:
+    def get_configs(self, recursive: bool) -> Configs:
         return {
             "max_lr": self._max_lr,
             "warmup_steps": self._warmup_steps,

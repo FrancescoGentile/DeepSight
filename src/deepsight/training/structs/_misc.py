@@ -9,21 +9,27 @@ from typing import Self
 
 import torch
 
-from deepsight.typing import Loss, Losses, str_enum
+from deepsight.typing import Configs, Configurable, Loss, Losses, str_enum
 
 
 @dataclass(frozen=True)
-class ClipGradNorm:
+class ClipGradNorm(Configurable):
     """Clips the norm of the gradients."""
 
     max_norm: float
 
+    def get_configs(self, recursive: bool) -> Configs:
+        return {"max_norm": self.max_norm}
+
 
 @dataclass(frozen=True)
-class ClipGradValue:
+class ClipGradValue(Configurable):
     """Clips the value of the gradients."""
 
     value: float
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {"value": self.value}
 
 
 class BatchLosses:

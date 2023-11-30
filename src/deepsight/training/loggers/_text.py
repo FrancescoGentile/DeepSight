@@ -100,7 +100,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             self._logger.info("Losses:")
             total_loss = 0.0
             for name, value in self._losses.items():
-                value /= phase.dataloader.num_samples()
+                value /= phase.dataloader.num_samples
                 self._logger.info(f"\t{name}: {value}")
                 total_loss += value
 
@@ -170,8 +170,8 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
         # Log the dataloader
         self._logger.info(f"\tDataset: {phase.dataloader.dataset}")
-        self._logger.info(f"\tNumber of batches: {phase.dataloader.num_batches()}")
-        self._logger.info(f"\tNumber of samples: {phase.dataloader.num_samples()}")
+        self._logger.info(f"\tNumber of batches: {phase.dataloader.num_batches}")
+        self._logger.info(f"\tNumber of samples: {phase.dataloader.num_samples}")
 
         if isinstance(phase, TrainingPhase):
             self._logger.info("\tOptimizers:")

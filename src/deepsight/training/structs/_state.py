@@ -142,7 +142,6 @@ class State[S, O, A, P](Stateful):
 
     def state_dict(self) -> StateDict:
         state = {
-            "run_name": self._run_name,
             "model": self._model.state_dict(),
             "phases": [phase.state_dict() for phase in self._phases],
             "current_phase_idx": self._current_phase_idx,
@@ -163,7 +162,6 @@ class State[S, O, A, P](Stateful):
         utils.set_rng_state(state_dict["rng"])
 
         state_dict = state_dict["state"]
-        self._run_name = state_dict["run_name"]
 
         self._model.load_state_dict(state_dict["model"])
         for phase, phase_state in zip(self._phases, state_dict["phases"], strict=True):

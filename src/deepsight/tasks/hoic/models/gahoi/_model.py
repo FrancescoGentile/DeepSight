@@ -133,7 +133,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self) -> Configs:
+    def get_configs(self, recursive: bool) -> Configs:
         return self._config.__dict__.copy()
 
     def forward(

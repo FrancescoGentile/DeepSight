@@ -12,9 +12,8 @@ from deepsight.training.structs import State
 class ProgressBarLogger[S, O, A, P](Callback[S, O, A, P]):
     def on_phase_start(self, state: State[S, O, A, P]) -> None:
         phase = state.current_phase
-        assert phase is not None
         self._pbar = tqdm(
-            total=phase.dataloader.num_samples(),
+            total=phase.dataloader.num_samples,
             desc=f"{phase.label}",
         )
 

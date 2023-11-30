@@ -52,8 +52,8 @@ class EpochPhaseTimestamp(Stateful):
             num_epochs=0,
             batch_in_epoch=0,
             sample_in_epoch=0,
-            batches_per_epoch=phase.dataloader.num_batches(),
-            samples_per_epoch=phase.dataloader.num_samples(),
+            batches_per_epoch=phase.dataloader.num_batches,
+            samples_per_epoch=phase.dataloader.num_samples,
             started=False,
             ended=True,
         )
