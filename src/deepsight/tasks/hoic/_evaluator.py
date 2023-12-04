@@ -11,7 +11,7 @@ from torchmetrics.classification import MultilabelAccuracy, MultilabelAveragePre
 from typing_extensions import Self
 
 from deepsight.core import Batch, Evaluator, MetricInfo
-from deepsight.typing import Moveable, Stateful, Tensor, str_enum
+from deepsight.typing import Configs, Configurable, Moveable, Stateful, Tensor, str_enum
 
 from ._structures import Predictions
 
@@ -37,7 +37,7 @@ class ErrorStrategy(enum.Enum):
     RAISE = "raise"
 
 
-class Evaluator(Evaluator[Predictions], Moveable, Stateful):
+class Evaluator(Evaluator[Predictions], Moveable, Stateful, Configurable):
     """Evaluator for the Human-Object Interaction (HOI) task.
 
     The evaluator computes the accuracy and mean average precision (mAP) for the
@@ -160,6 +160,13 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
 
     def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._metrics.load_state_dict(state_dict["metrics"])
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "average": self._metrics["mAP"].average,
+            "thresholds": list(self._metrics["mAP"].thresholds),
+            "allow_human_human": self._allow_human_human,
+        }
 
 
 # --------------------------------------------------------------------------- #
