@@ -3,21 +3,15 @@
 ##
 
 import enum
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
 from torchmetrics import MetricCollection
-from torchmetrics.classification import (
-    MultilabelAccuracy,
-    MultilabelF1Score,
-    MultilabelPrecision,
-    MultilabelRecall,
-)
+from torchmetrics.classification import MultilabelAccuracy, MultilabelAveragePrecision
 from typing_extensions import Self
 
 from deepsight.core import Batch, Evaluator, MetricInfo
-from deepsight.typing import Moveable, Stateful, str_enum
+from deepsight.typing import Moveable, Stateful, Tensor, str_enum
 
 from ._structures import Predictions
 
@@ -46,14 +40,15 @@ class ErrorStrategy(enum.Enum):
 class Evaluator(Evaluator[Predictions], Moveable, Stateful):
     """Evaluator for the Human-Object Interaction (HOI) task.
 
-    The evaluator computes the accuracy, precision, recall, and F1 score of the
+    The evaluator computes the accuracy and mean average precision (mAP) for the
     predictions.
     """
 
     def __init__(
         self,
         num_interaction_classes: int,
-        average: Literal["macro", "macro", "weighted"] = "weighted",
+        average: Literal["micro", "macro", "weighted"] = "weighted",
+        thresholds: int | list[float] | None = None,
         error_strategy: ErrorStrategy = ErrorStrategy.NONE,
         human_class_id: int | None = None,
         allow_human_human: bool | None = None,
@@ -63,6 +58,9 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
         Args:
             num_interaction_classes: The number of interaction classes.
             average: The averaging strategy to use for the metrics.
+            thresholds: The thresholds to use for the computation of the mean average
+                precision. See `torchmetrics.classification.MultilabelAveragePrecision`
+                for more information.
             error_strategy: The error strategy to use when a prediction is invalid.
             human_class_id: The class ID of the human class. This must be set if
                 `error_strategy` is not set to `ErrorStrategy.NONE`.
@@ -91,14 +89,10 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
                 "accuracy": MultilabelAccuracy(
                     num_labels=num_interaction_classes, average=average
                 ),
-                "precision": MultilabelPrecision(
-                    num_labels=num_interaction_classes, average=average
-                ),
-                "recall": MultilabelRecall(
-                    num_labels=num_interaction_classes, average=average
-                ),
-                "f1_score": MultilabelF1Score(
-                    num_labels=num_interaction_classes, average=average
+                "mAP": MultilabelAveragePrecision(
+                    num_labels=num_interaction_classes,
+                    average=average,
+                    thresholds=thresholds,
                 ),
             },
             compute_groups=False,
@@ -175,7 +169,7 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
 
 def _match_prediction_ground_truth(
     pred: Predictions, ground_truth: Predictions
-) -> tuple[Annotated[Tensor, "M V", float], Annotated[Tensor, "M V", bool]]:
+) -> tuple[Tensor[Literal["M V"], float], Tensor[Literal["M V"], bool]]:
     num_classes = pred.interaction_labels.shape[1]
 
     matched = (
