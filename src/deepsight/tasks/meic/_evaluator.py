@@ -2,11 +2,10 @@
 ##
 ##
 
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 import sklearn.metrics
 import torch
-from torch import Tensor
 from torchmetrics import Metric, MetricCollection
 from torchmetrics.classification import (
     MultilabelAccuracy,
@@ -17,7 +16,7 @@ from typing_extensions import Self
 
 from deepsight.core import Batch, MetricInfo
 from deepsight.core import Evaluator as _Evaluator
-from deepsight.typing import Configs, Configurable, Moveable, Stateful
+from deepsight.typing import Configs, Configurable, Moveable, Stateful, Tensor
 
 from ._structures import Predictions
 
@@ -162,7 +161,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful, Configurable):
             pred.interaction_labels, target.interaction_labels, matched
         )
 
-        self._hoic_metrics.update(pred_labels, gt_labels)
+        self._hoic_metrics.update(pred_labels, gt_labels.round_().int())
 
 
 # --------------------------------------------------------------------------- #
@@ -176,10 +175,10 @@ class JaccardIndex(Metric):
 
         self.add_state("num_equal", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("num_total", default=torch.tensor(0), dist_reduce_fx="sum")
-        self.num_equal: Tensor
-        self.num_total: Tensor
+        self.num_equal: torch.Tensor
+        self.num_total: torch.Tensor
 
-    def update(self, matched: Annotated[Tensor, "H H'", bool]) -> None:
+    def update(self, matched: Tensor[Literal["H H'"], bool]) -> None:
         num_equal = matched.sum()
         self.num_equal += num_equal
         self.num_total += matched.shape[0] + matched.shape[1] - num_equal
@@ -195,13 +194,13 @@ class RandIndex(Metric):
         self.adjusted = adjusted
         self.add_state("score", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
-        self.score: Tensor
-        self.total: Tensor
+        self.score: torch.Tensor
+        self.total: torch.Tensor
 
     def update(
         self,
-        pred_bm: Annotated[Tensor, "N H", bool],
-        gt_bm: Annotated[Tensor, "N H'", bool],
+        pred_bm: Tensor[Literal["N H"], bool],
+        gt_bm: Tensor[Literal["N H'"], bool],
     ) -> None:
         pred_labels = _compute_cluster_labels(pred_bm).cpu().numpy()
         gt_labels = _compute_cluster_labels(gt_bm).cpu().numpy()
@@ -224,8 +223,8 @@ class RandIndex(Metric):
 
 
 def _compute_cluster_labels(
-    bm: Annotated[Tensor, "N H", bool]
-) -> Annotated[Tensor, "NH", int]:
+    bm: Tensor[Literal["N H"], bool]
+) -> Tensor[Literal["NH"], int]:
     cluster_ids = torch.arange(bm.shape[1], device=bm.device)
     cluster_ids = cluster_ids.unsqueeze_(0).expand_as(bm)  # (N, H)
 
@@ -239,10 +238,10 @@ def _compute_cluster_labels(
 
 
 def _match_labels(
-    pred_labels: Annotated[Tensor, "N C", float],
-    gt_labels: Annotated[Tensor, "M C", float],
-    matched: Annotated[Tensor, "N M", bool],
-) -> tuple[Annotated[Tensor, "T C", float], Annotated[Tensor, "T C", float]]:
+    pred_labels: Tensor[Literal["N C"], float],
+    gt_labels: Tensor[Literal["M C"], float],
+    matched: Tensor[Literal["N M"], bool],
+) -> tuple[Tensor[Literal["T C"], float], Tensor[Literal["T C"], float]]:
     matched_pred, matched_target = torch.nonzero(matched, as_tuple=True)
 
     not_matched = matched.logical_not_()

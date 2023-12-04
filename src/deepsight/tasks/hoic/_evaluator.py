@@ -10,7 +10,8 @@ from torchmetrics import MetricCollection
 from torchmetrics.classification import MultilabelAccuracy, MultilabelAveragePrecision
 from typing_extensions import Self
 
-from deepsight.core import Batch, Evaluator, MetricInfo
+from deepsight.core import Batch, MetricInfo
+from deepsight.core import Evaluator as _Evaluator
 from deepsight.typing import Configs, Configurable, Moveable, Stateful, Tensor, str_enum
 
 from ._structures import Predictions
@@ -37,7 +38,7 @@ class ErrorStrategy(enum.Enum):
     RAISE = "raise"
 
 
-class Evaluator(Evaluator[Predictions], Moveable, Stateful, Configurable):
+class Evaluator(_Evaluator[Predictions], Moveable, Stateful, Configurable):
     """Evaluator for the Human-Object Interaction (HOI) task.
 
     The evaluator computes the accuracy and mean average precision (mAP) for the
@@ -143,7 +144,7 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful, Configurable):
                 # TODO: Implement
                 raise NotImplementedError
 
-        self._metrics.update(predicted_labels, target_labels)
+        self._metrics.update(predicted_labels, target_labels.round_().int())
 
     def compute_numeric_metrics(self) -> dict[str, float]:
         return self._metrics.compute()
@@ -176,7 +177,7 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful, Configurable):
 
 def _match_prediction_ground_truth(
     pred: Predictions, ground_truth: Predictions
-) -> tuple[Tensor[Literal["M V"], float], Tensor[Literal["M V"], bool]]:
+) -> tuple[Tensor[Literal["M V"], float], Tensor[Literal["M V"], float]]:
     num_classes = pred.interaction_labels.shape[1]
 
     matched = (
