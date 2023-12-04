@@ -2,7 +2,7 @@
 ##
 ##
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import sklearn.metrics
 import torch
@@ -10,38 +10,39 @@ from torch import Tensor
 from torchmetrics import Metric, MetricCollection
 from torchmetrics.classification import (
     MultilabelAccuracy,
-    MultilabelF1Score,
+    MultilabelAveragePrecision,
     MultilabelPrecision,
-    MultilabelRecall,
 )
 from typing_extensions import Self
 
-from deepsight.core import Batch, Evaluator, MetricInfo
-from deepsight.typing import Moveable, Stateful
+from deepsight.core import Batch, MetricInfo
+from deepsight.core import Evaluator as _Evaluator
+from deepsight.typing import Configs, Configurable, Moveable, Stateful
 
 from ._structures import Predictions
 
 
-class Evaluator(Evaluator[Predictions], Moveable, Stateful):
+class Evaluator(_Evaluator[Predictions], Moveable, Stateful, Configurable):
     """Evaluator for the Multi-Entity Interaction Classification task."""
 
-    def __init__(self, num_interaction_classes: int) -> None:
-        # Multi-Entity Interaction Classification Metrics
+    def __init__(
+        self,
+        num_interaction_classes: int,
+        average: Literal["micro", "macro", "weighted"] = "weighted",
+        thresholds: int | list[float] | None = None,
+    ) -> None:
         self._jaccard_index = JaccardIndex()
         self._adjusted_rand_index = RandIndex(adjusted=True)
         self._meic_metrics = MetricCollection(
             {
                 "meic_accuracy": MultilabelAccuracy(
-                    num_interaction_classes, average="weighted"
+                    num_interaction_classes,
+                    average=average,
                 ),
-                "meic_precision": MultilabelPrecision(
-                    num_interaction_classes, average="weighted"
-                ),
-                "meic_recall": MultilabelRecall(
-                    num_interaction_classes, average="weighted"
-                ),
-                "meic_f1score": MultilabelF1Score(
-                    num_interaction_classes, average="weighted"
+                "meic_mAP": MultilabelAveragePrecision(
+                    num_interaction_classes,
+                    average=average,
+                    thresholds=thresholds,
                 ),
             }
         )
@@ -50,16 +51,13 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
         self._hoic_metrics = MetricCollection(
             {
                 "hoic_accuracy": MultilabelAccuracy(
-                    num_interaction_classes, average="weighted"
+                    num_interaction_classes,
+                    average=average,
                 ),
-                "hoic_precision": MultilabelPrecision(
-                    num_interaction_classes, average="weighted"
-                ),
-                "hoic_recall": MultilabelRecall(
-                    num_interaction_classes, average="weighted"
-                ),
-                "hoic_f1score": MultilabelF1Score(
-                    num_interaction_classes, average="weighted"
+                "hoic_mAP": MultilabelPrecision(
+                    num_interaction_classes,
+                    average=average,
+                    thresholds=thresholds,
                 ),
             }
         )
@@ -81,13 +79,9 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
             MetricInfo(name="jaccard_index", type=MetricInfo.Type.NUMERIC),
             MetricInfo(name="adjusted_rand_index", type=MetricInfo.Type.NUMERIC),
             MetricInfo(name="meic_accuracy", type=MetricInfo.Type.NUMERIC),
-            MetricInfo(name="meic_precision", type=MetricInfo.Type.NUMERIC),
-            MetricInfo(name="meic_recall", type=MetricInfo.Type.NUMERIC),
-            MetricInfo(name="meic_f1score", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="meic_mAP", type=MetricInfo.Type.NUMERIC),
             MetricInfo(name="hoic_accuracy", type=MetricInfo.Type.NUMERIC),
-            MetricInfo(name="hoic_precision", type=MetricInfo.Type.NUMERIC),
-            MetricInfo(name="hoic_recall", type=MetricInfo.Type.NUMERIC),
-            MetricInfo(name="hoic_f1score", type=MetricInfo.Type.NUMERIC),
+            MetricInfo(name="hoic_mAP", type=MetricInfo.Type.NUMERIC),
         )
 
     def update(
@@ -132,6 +126,12 @@ class Evaluator(Evaluator[Predictions], Moveable, Stateful):
         self._adjusted_rand_index.load_state_dict(state_dict["adjusted_rand_index"])
         self._meic_metrics.load_state_dict(state_dict["meic_metrics"])
         self._hoic_metrics.load_state_dict(state_dict["hoic_metrics"])
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "average": self._meic_metrics["meic_accuracy"].average,
+            "thresholds": list(self._meic_metrics["meic_mAP"].thresholds),
+        }
 
     # ----------------------------------------------------------------------- #
     # Private Methods
