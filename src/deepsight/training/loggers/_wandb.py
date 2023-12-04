@@ -129,7 +129,7 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         commit_info[f"{label}/losses/total"] = total_loss
         wandb.log(commit_info)
 
-        self._total_batch_size[label]
+        self._total_batch_size[label] = 0
         self._losses[label] = {}
 
     def on_phase_end(self, state: State[S, O, A, P]) -> None:
@@ -146,7 +146,7 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             for name, value in evaluator.compute_numeric_metrics().items():
                 commit_info[f"{label}/metrics/{name}"] = value
         else:
-            if len(self._losses) > 0:
+            if len(self._losses[label]) > 0:
                 total_loss = 0.0
                 for name, value in self._losses[label].items():
                     value /= self._total_batch_size[label]
