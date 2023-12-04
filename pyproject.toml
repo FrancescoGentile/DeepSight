@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "numpy>=1.26",
-    # "torch==2.2.0.dev20231120+cu121",
+    # "torch-2.2.0.dev20231204+cu121",
     # "torchmetrics>=1.2",
     "wandb>=0.16",
     "tqdm>=4.66",
@@ -37,7 +37,7 @@ docs = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py312"
 select = ["A", "ANN", "B", "C4", "C90", "D", "E", "F", "I", "N"]
 ignore = ["A003", "ANN101", "ANN102", "ANN401", "D104", "C901"]
 fixable = ["ALL"]
