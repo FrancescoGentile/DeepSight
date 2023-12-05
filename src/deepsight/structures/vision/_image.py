@@ -6,13 +6,12 @@ from __future__ import annotations
 
 import enum
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, Self
 
 import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 from PIL import Image as PILImage
-from typing_extensions import Self
 
 from deepsight.typing import Moveable, Number, PathLike, Tensor, str_enum
 from deepsight.utils import InterpolationMode

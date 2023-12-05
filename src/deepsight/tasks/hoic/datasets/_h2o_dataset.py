@@ -7,10 +7,9 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 import torch
-from typing_extensions import NotRequired
 
 from deepsight import utils
 from deepsight.core import Dataset

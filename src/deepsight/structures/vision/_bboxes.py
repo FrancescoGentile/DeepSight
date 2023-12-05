@@ -3,10 +3,9 @@
 ##
 
 import enum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import torch
-from typing_extensions import Self
 
 from deepsight.typing import Moveable, Tensor
 

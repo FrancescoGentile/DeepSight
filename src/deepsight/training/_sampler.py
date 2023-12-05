@@ -3,8 +3,8 @@
 ##
 
 import math
-from collections.abc import Iterator
-from typing import Any, Protocol, Sized
+from collections.abc import Iterator, Sized
+from typing import Any, Protocol
 
 import torch
 

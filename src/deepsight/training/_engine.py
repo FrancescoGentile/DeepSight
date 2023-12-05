@@ -6,8 +6,7 @@ import hashlib
 import pickle
 import random
 from collections import Counter
-from collections.abc import Iterable
-from typing import Callable
+from collections.abc import Callable, Iterable
 
 import coolname
 import torch

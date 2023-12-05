@@ -2,7 +2,7 @@
 ##
 ##
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import sklearn.metrics
 import torch
@@ -12,7 +12,6 @@ from torchmetrics.classification import (
     MultilabelAveragePrecision,
     MultilabelPrecision,
 )
-from typing_extensions import Self
 
 from deepsight.core import Batch, MetricInfo
 from deepsight.core import Evaluator as _Evaluator

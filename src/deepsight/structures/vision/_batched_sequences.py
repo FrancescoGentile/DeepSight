@@ -87,7 +87,7 @@ class BatchedSequences(Moveable):
     def batch(
         cls,
         sequences: Sequence[Tensor[Literal["L D"], Number]],
-        padding_value: int | float = 0.0,
+        padding_value: float = 0.0,
     ) -> Self:
         """Batch a list of sequences.
 

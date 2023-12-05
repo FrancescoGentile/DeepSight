@@ -51,8 +51,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
                     raise FileExistsError(
                         f"The output file '{self._output_file}' already exists."
                     )
-                else:
-                    handler = logging.FileHandler(self._output_file, mode="a")
+                handler = logging.FileHandler(self._output_file, mode="a")
             else:
                 Path(self._output_file).parent.mkdir(parents=True, exist_ok=True)
                 handler = logging.FileHandler(self._output_file, mode="w+")
@@ -72,10 +71,10 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         self._logger.info("Starting training.")
 
     def on_epoch_start(self, state: State[S, O, A, P]) -> None:
-        self._logger.info(f"Epoch {state.timestamp.num_epochs + 1} started.")
+        self._logger.info("Epoch %d started.", state.timestamp.num_epochs + 1)
 
     def on_phase_start(self, state: State[S, O, A, P]) -> None:
-        self._logger.info(f"Phase '{state.current_phase.label}' started.")
+        self._logger.info("Phase '%s' started.", state.current_phase.label)
         if state.current_phase.criterion is not None:
             self._losses = {
                 loss.name: 0.0
@@ -94,27 +93,26 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
     def on_phase_end(self, state: State[S, O, A, P]) -> None:
         phase = state.current_phase
-        self._logger.info(f"Phase '{phase.label}' finished.")
+        self._logger.info("Phase '%s' finished.", phase.label)
 
         if self._losses is not None:
             self._logger.info("Losses:")
             total_loss = 0.0
             for name, value in self._losses.items():
                 value /= phase.dataloader.num_samples
-                self._logger.info(f"\t{name}: {value}")
+                self._logger.info("\t%s: %f", name, value)
                 total_loss += value
 
-            self._logger.info(f"\tTotal: {total_loss}")
-
+            self._logger.info("\tTotal: %f", total_loss)
             self._losses = None
 
         if phase.evaluator is not None:
             self._logger.info("Metrics:")
             for name, value in phase.evaluator.compute_numeric_metrics().items():
-                self._logger.info(f"\t{name}: {value}")
+                self._logger.info("\t%s: %f", name, value)
 
     def on_epoch_end(self, state: State[S, O, A, P]) -> None:
-        self._logger.info(f"Epoch {state.timestamp.num_epochs + 1} finished.")
+        self._logger.info("Epoch %d finished.", state.timestamp.num_epochs + 1)
 
     def on_fit_end(
         self,
@@ -150,15 +148,15 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
     def _log_start(self, state: State[S, O, A, P]) -> None:
         # Log the state properties
-        self._logger.info(f"Run name: {state.run_name}")
-        self._logger.info(f"Using device: {state.device}")
-        self._logger.info(f"Using precision: {state.precision}")
+        self._logger.info("Run name: %s", state.run_name)
+        self._logger.info("Using device: %s", state.device)
+        self._logger.info("Using precision: %s", state.precision)
 
         # Log the model
         self._logger.info("Model:")
         self._logger.info(state.model)
         num_params = sum(p.numel() for p in state.model.parameters() if p.requires_grad)
-        self._logger.info(f"Number of trainable parameters: {num_params}")
+        self._logger.info("Number of trainable parameters: %d", num_params)
 
         # Log the phases
         self._logger.info("Phases:")
@@ -166,24 +164,24 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             self._log_phase(phase)
 
     def _log_phase(self, phase: EpochPhase[S, O, A, P]) -> None:
-        self._logger.info(f"\tName: {phase.label}")
+        self._logger.info("\tName: %s", phase.label)
 
         # Log the dataloader
-        self._logger.info(f"\tDataset: {phase.dataloader.dataset}")
-        self._logger.info(f"\tNumber of batches: {phase.dataloader.num_batches}")
-        self._logger.info(f"\tNumber of samples: {phase.dataloader.num_samples}")
+        self._logger.info("\tDataset: %s", phase.dataloader.dataset)
+        self._logger.info("\tNumber of batches: %d", phase.dataloader.dataset)
+        self._logger.info("\tNumber of samples: %d", phase.dataloader.num_samples)
 
         if isinstance(phase, TrainingPhase):
             self._logger.info("\tOptimizers:")
             for optimizer in phase.optimizers:
-                self._logger.info(f"\t\t{optimizer}")
+                self._logger.info("\t\t%s", optimizer)
 
             if phase.schedulers is not None:
                 self._logger.info("\tSchedulers:")
                 for scheduler in phase.schedulers:
-                    self._logger.info(f"\t\t{scheduler}")
+                    self._logger.info("\t\t%s", scheduler)
 
-            self._logger.info(f"\tClip gradient: {phase.clip_gradient}")
+            self._logger.info("\tClip gradient: %s", phase.clip_gradient)
 
 
 # --------------------------------------------------------------------------- #

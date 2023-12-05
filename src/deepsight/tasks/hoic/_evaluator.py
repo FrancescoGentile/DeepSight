@@ -3,12 +3,11 @@
 ##
 
 import enum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 import torch
 from torchmetrics import MetricCollection
 from torchmetrics.classification import MultilabelAccuracy, MultilabelAveragePrecision
-from typing_extensions import Self
 
 from deepsight.core import Batch, MetricInfo
 from deepsight.core import Evaluator as _Evaluator

@@ -7,7 +7,7 @@
 
 def main() -> None:
     """Main entry point for the application script."""
-    print("Call your main application code here.")
+    raise RuntimeError("This library is not meant to be executed.")
 
 
 if __name__ == "__main__":

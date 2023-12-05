@@ -38,8 +38,12 @@ docs = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-select = ["A", "ANN", "B", "C4", "C90", "D", "E", "F", "I", "N"]
-ignore = ["A003", "ANN101", "ANN102", "ANN401", "D104", "C901"]
+select = [
+    "A", "ANN", "B", "C4", "C90", "D", "E", "F", 
+    "FA", "I", "ICN", "INP", "G", "N", "PIE", "PYI", 
+    "Q", "RSE", "T20", "UP", "W"
+]
+ignore = ["A003", "ANN101", "ANN102", "ANN401", "C901", "D104"]
 fixable = ["ALL"]
 fix = true
 

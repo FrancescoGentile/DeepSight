@@ -116,13 +116,11 @@ class ViTEncoder(nn.Module):
         image_size: Literal[224, 384] = 224,
     ) -> Self:
         configs = _get_configs(variant)
-        model = cls(
+        return cls(
             image_size=image_size,
             patch_size=patch_size,
             **configs,
         )
-
-        return model
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -161,8 +159,8 @@ class ViTEncoder(nn.Module):
 
         if isinstance(x, BatchedImages):
             return x.replace(data=out)
-        else:
-            return out
+
+        return out
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
@@ -284,8 +282,8 @@ class PatchEmbedding(nn.Module):
                 for h, w in x.image_sizes
             )
             return BatchedImages(data, image_sizes=new_image_sizes)
-        else:
-            return data
+
+        return data
 
 
 class Layer(nn.Module):
@@ -404,9 +402,7 @@ class SelfAttention(nn.Module):
 
         out = out.transpose(1, 2).reshape(B, N, D)
         out = self.proj(out)
-        out = self.proj_dropout(out)
-
-        return out
+        return self.proj_dropout(out)
 
 
 class LayerScale(nn.Module):

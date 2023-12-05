@@ -814,7 +814,7 @@ class Decoder(nn.Module):
     ) -> None:
         super().__init__()
 
-        if isinstance(similarity_thresholds, (int, float)):
+        if isinstance(similarity_thresholds, float | int):
             similarity_thresholds = [float(similarity_thresholds)] * num_layers
         else:
             similarity_thresholds = list(similarity_thresholds)

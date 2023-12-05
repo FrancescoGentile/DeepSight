@@ -82,7 +82,7 @@ class CombinatorialComplex:
         """
         if len(complexes) == 0:
             raise ValueError("Expected at least one complex, got none.")
-        elif len(complexes) == 1:
+        if len(complexes) == 1:
             return complexes[0]
 
         if any(complexes[0].rank != c.rank for c in complexes):
@@ -299,10 +299,10 @@ class CombinatorialComplex:
                 rank of the complex.
             batch_mode: The mode in which to return the boundary matrix. This is only
                 relevant if the complex is batched.
-        
+
         Returns:
             The boundary matrix of the given rank as a sparse COO tensor.
-        
+
         Raises:
             ValueError: If `rank` is not between 1 and the rank of the complex.
         """
@@ -354,15 +354,15 @@ class CombinatorialComplex:
                 values=values,
                 size=(len(self._num_cells[rank]), max_r_minus_1_ncells, max_r_ncells),
             )
-        else:
-            return tuple(
-                torch.sparse_coo_tensor(
-                    indices=indices[idx],
-                    values=values[idx],
-                    size=(self._num_cells[rank - 1][idx], self._num_cells[rank][idx]),
-                )
-                for idx in range(len(indices))
+
+        return tuple(
+            torch.sparse_coo_tensor(
+                indices=indices[idx],
+                values=values[idx],
+                size=(self._num_cells[rank - 1][idx], self._num_cells[rank][idx]),
             )
+            for idx in range(len(indices))
+        )
 
     @overload
     def coboundary_matrix(
@@ -387,7 +387,7 @@ class CombinatorialComplex:
         | tuple[SparseTensor[Literal["M N"], Number], ...]
     ):
         r"""Get the coboundary matrix for the given rank.
-        
+
         The coboundary matrix $B_r^T$ is the transpose of the boundary matrix $B_r$.
         It records to which cells of rank $r - 1$ each cell of rank $r$ is bound.
         More formally, it is a matrix of size $n_{r} \times n_{r-1}$, with $n_r$
@@ -409,7 +409,7 @@ class CombinatorialComplex:
                 the rank of the complex.
             batch_mode: The mode in which to return the coboundary matrix. This is
                 only relevant if the complex is batched.
-        
+
         Returns:
             The coboundary matrix of the given rank as a sparse COO tensor.
         """

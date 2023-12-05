@@ -154,13 +154,13 @@ class Instant:
     def _parse(self, other: object) -> Self:
         if isinstance(other, int):
             return self.__class__(other, self.unit, self.phase, self.from_epoch_begin)
-        elif isinstance(other, self.__class__):
+        if isinstance(other, self.__class__):
             return other
-        else:
-            raise TypeError(
-                f"Expected an int or an {self.__class__.__name__} instance, "
-                f"got {type(other)}."
-            )
+
+        raise TypeError(
+            f"Expected an int or an {self.__class__.__name__} instance, "
+            f"got {type(other)}."
+        )
 
 
 @dataclass(frozen=True)

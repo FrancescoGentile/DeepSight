@@ -3,10 +3,9 @@
 ##
 
 import typing
-from typing import Any, Protocol
+from typing import Any, Protocol, Self
 
 import torch
-from typing_extensions import Self
 
 from ._types import Configs, StateDict
 

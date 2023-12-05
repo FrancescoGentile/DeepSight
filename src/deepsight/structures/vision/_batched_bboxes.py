@@ -3,10 +3,9 @@
 ##
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, Self
 
 import torch
-from typing_extensions import Self
 
 from deepsight.typing import Tensor
 

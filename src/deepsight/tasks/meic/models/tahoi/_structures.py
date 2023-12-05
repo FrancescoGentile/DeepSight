@@ -3,10 +3,9 @@
 ##
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Self
 
 import torch
-from typing_extensions import Self
 
 from deepsight.core import Batch
 from deepsight.tasks.meic import Annotations

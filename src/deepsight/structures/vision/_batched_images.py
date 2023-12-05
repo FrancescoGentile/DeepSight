@@ -92,7 +92,7 @@ class BatchedImages(Moveable):
     def batch(
         cls,
         images: Sequence[Tensor[Literal["C H W"], Number]],
-        padding_value: int | float = 0,
+        padding_value: float = 0,
     ) -> Self:
         """Batch a list of images into a single tensor.
 

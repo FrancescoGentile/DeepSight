@@ -48,7 +48,7 @@ class ReciprocalLR(LRScheduler, Configurable):
                 same length as the number of parameter groups in the optimizer.
             warmup_steps: The number of warmup steps. If 0, no warmup is performed.
         """
-        if isinstance(max_lr, (float, int)):
+        if isinstance(max_lr, float | int):
             max_lr = [float(max_lr)] * len(optimizer.param_groups)
         elif len(max_lr) != len(optimizer.param_groups):
             raise ValueError(

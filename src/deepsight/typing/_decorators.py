@@ -5,10 +5,9 @@
 """Decorators for type checking."""
 
 import enum
-from typing import Type
 
 
-def str_enum[T: enum.Enum](cls: Type[T]) -> Type[T]:
+def str_enum[T: enum.Enum](cls: type[T]) -> type[T]:
     """Create a string enum from an enum class.
 
     To be a string enum, the enum class must follow the following conventions:
