@@ -2,25 +2,16 @@
 ##
 ##
 
-import enum
 import random
 from collections.abc import Sequence
-
-import torch.nn.functional as F  # noqa: N812
+from typing import overload
 
 from deepsight import utils
 from deepsight.structures.vision import BoundingBoxes, Image
-from deepsight.typing import Configs, str_enum
+from deepsight.typing import Configs
+from deepsight.utils import InterpolationMode
 
 from ._base import Transform
-
-
-@str_enum
-class InterpolationMode(enum.Enum):
-    NEAREST = "nearest"
-    NEAREST_EXACT = "nearest-exact"
-    BILINEAR = "bilinear"
-    BICUBIC = "bicubic"
 
 
 class Resize(Transform):
@@ -64,9 +55,37 @@ class Resize(Transform):
         self.interpolation = interpolation
         self.antialias = antialias
 
-    def _apply(
-        self, image: Image, boxes: BoundingBoxes | None
-    ) -> tuple[Image, BoundingBoxes | None]:
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "size": self.size,
+            "max_size": self.max_size,
+            "interpolation": self.interpolation,
+            "antialias": self.antialias,
+        }
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
         if boxes is not None and boxes.image_size != image.size:
             raise ValueError(
                 "The image size of the boxes does not match the size of the image, "
@@ -83,26 +102,18 @@ class Resize(Transform):
         else:
             new_height, new_width = self.size
 
-        data = F.interpolate(
-            image.data.unsqueeze(0),
-            size=(new_height, new_width),
-            mode=str(self.interpolation),
+        image = image.resize(
+            (new_height, new_width),
+            interpolation_mode=self.interpolation,
             antialias=self.antialias,
-        ).squeeze_(0)
-        new_image = Image(data)
+        )
 
-        if boxes is not None:
-            boxes = boxes.resize(new_image.size)
-
-        return new_image, boxes
-
-    def get_configs(self, recursive: bool) -> Configs:
-        return {
-            "size": self.size,
-            "max_size": self.max_size,
-            "interpolation": self.interpolation,
-            "antialias": self.antialias,
-        }
+        match boxes:
+            case None:
+                return image
+            case BoundingBoxes():
+                boxes = boxes.resize(image.size)
+                return image, boxes
 
 
 class RandomShortestSize(Transform):
@@ -144,9 +155,37 @@ class RandomShortestSize(Transform):
         self.interpolation = interpolation
         self.antialias = antialias
 
-    def _apply(
-        self, image: Image, boxes: BoundingBoxes | None
-    ) -> tuple[Image, BoundingBoxes | None]:
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "min_size": self.min_size,
+            "max_size": self.max_size,
+            "interpolation": self.interpolation,
+            "antialias": self.antialias,
+        }
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
         if boxes is not None and boxes.image_size != image.size:
             raise ValueError(
                 "The image size of the boxes does not match the size of the image, "
@@ -161,23 +200,44 @@ class RandomShortestSize(Transform):
         new_height = int(image.height * ratio)
         new_width = int(image.width * ratio)
 
-        data = F.interpolate(
-            image.data.unsqueeze(0),
-            size=(new_height, new_width),
-            mode=str(self.interpolation),
+        image = image.resize(
+            (new_height, new_width),
+            interpolation_mode=self.interpolation,
             antialias=self.antialias,
-        ).squeeze_(0)
-        new_image = Image(data)
+        )
 
-        if boxes is not None:
-            boxes = boxes.resize((new_height, new_width))
+        match boxes:
+            case None:
+                return image
+            case BoundingBoxes():
+                boxes = boxes.resize(image.size)
+                return image, boxes
 
-        return new_image, boxes
+
+class HorizonalFlip(Transform):
+    def __init__(self) -> None:
+        super().__init__()
 
     def get_configs(self, recursive: bool) -> Configs:
-        return {
-            "min_size": self.min_size,
-            "max_size": self.max_size,
-            "interpolation": self.interpolation,
-            "antialias": self.antialias,
-        }
+        return {}
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
+        match boxes:
+            case None:
+                return image.horizontal_flip()
+            case BoundingBoxes():
+                return image.horizontal_flip(), boxes.horizontal_flip()

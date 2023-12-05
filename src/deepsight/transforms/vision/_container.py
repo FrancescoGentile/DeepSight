@@ -4,6 +4,7 @@
 
 import random
 from collections.abc import Iterable, Sequence
+from typing import overload
 
 from deepsight import utils
 from deepsight.structures.vision import BoundingBoxes, Image
@@ -25,14 +26,9 @@ class SequentialOrder(Transform):
 
         self.transforms = transforms
 
-    def _apply(
-        self, image: Image, boxes: BoundingBoxes | None
-    ) -> tuple[Image, BoundingBoxes | None]:
-        output = (image, boxes)
-        for transform in self.transforms:
-            output = transform._apply(*output)
-
-        return output
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
         if not recursive:
@@ -43,6 +39,35 @@ class SequentialOrder(Transform):
                 utils.get_configs(transform, recursive) for transform in self.transforms
             ]
         }
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
+        match boxes:
+            case None:
+                for transform in self.transforms:
+                    image = transform(image)
+                return image
+            case BoundingBoxes():
+                for transform in self.transforms:
+                    image, boxes = transform(image, boxes)
+                return image, boxes
 
 
 class RandomOrder(Transform):
@@ -58,15 +83,9 @@ class RandomOrder(Transform):
 
         self.transforms = transforms
 
-    def _apply(
-        self, image: Image, boxes: BoundingBoxes | None
-    ) -> tuple[Image, BoundingBoxes | None]:
-        permutation = random.sample(range(len(self.transforms)), len(self.transforms))
-        output = (image, boxes)
-        for index in permutation:
-            output = self.transforms[index]._apply(*output)
-
-        return output
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
         if not recursive:
@@ -77,6 +96,32 @@ class RandomOrder(Transform):
                 utils.get_configs(transform, recursive) for transform in self.transforms
             ]
         }
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
+        transform = random.choice(self.transforms)
+        match boxes:
+            case None:
+                return transform(image)
+            case BoundingBoxes():
+                return transform(image, boxes)
 
 
 class RandomApply(Transform):
@@ -98,13 +143,9 @@ class RandomApply(Transform):
         self.transform = transform
         self.p = p
 
-    def _apply(
-        self, image: Image, boxes: BoundingBoxes | None
-    ) -> tuple[Image, BoundingBoxes | None]:
-        if random.random() < self.p:
-            return self.transform._apply(image, boxes)
-
-        return image, boxes
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
         configs: Configs = {"p": self.p}
@@ -113,12 +154,43 @@ class RandomApply(Transform):
 
         return configs
 
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
+        match boxes:
+            case None:
+                if random.random() < self.p:
+                    return self.transform(image)
+                return image
+            case BoundingBoxes():
+                if random.random() < self.p:
+                    return self.transform(image, boxes)
+                return image, boxes
+
 
 class RandomChoice(Transform):
     """Apply one of the transforms randomly."""
 
     def __init__(
-        self, transforms: Sequence[Transform], p: Sequence[float] | None = None
+        self,
+        transforms: Sequence[Transform],
+        p: Sequence[float] | None = None,
     ) -> None:
         """Initialize a random choice transform.
 
@@ -146,11 +218,9 @@ class RandomChoice(Transform):
         self.transforms = transforms
         self.p = p
 
-    def _apply(
-        self, image: Image, boxes: BoundingBoxes | None
-    ) -> tuple[Image, BoundingBoxes | None]:
-        transform = random.choices(self.transforms, weights=self.p)[0]
-        return transform._apply(image, boxes)
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
         configs: Configs = {"p": self.p}
@@ -160,3 +230,29 @@ class RandomChoice(Transform):
             ]
 
         return configs
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
+        transform = random.choices(self.transforms, weights=self.p)[0]
+        match boxes:
+            case None:
+                return transform(image)
+            case BoundingBoxes():
+                return transform(image, boxes)

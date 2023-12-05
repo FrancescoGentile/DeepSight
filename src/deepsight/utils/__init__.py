@@ -2,6 +2,7 @@
 ##
 ##
 
+from ._enums import InterpolationMode
 from ._logging import get_library_logger
 from ._misc import (
     full_class_name,
@@ -14,6 +15,8 @@ from ._misc import (
 from ._reproducibility import get_rng_state, seed_all, set_rng_state
 
 __all__ = [
+    # _enums
+    "InterpolationMode",
     # _logging
     "get_library_logger",
     # _misc

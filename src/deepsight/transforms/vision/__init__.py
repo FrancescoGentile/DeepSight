@@ -3,19 +3,26 @@
 ##
 
 from ._base import Transform
+from ._color import ColorJitter
 from ._container import RandomApply, RandomChoice, RandomOrder, SequentialOrder
-from ._geometry import InterpolationMode, RandomShortestSize, Resize
+from ._geometry import HorizonalFlip, RandomShortestSize, Resize
 from ._misc import Standardize, ToDtype
 
 __all__ = [
-    "InterpolationMode",
+    # _base
+    "Transform",
+    # _color
+    "ColorJitter",
+    # _container
     "RandomApply",
     "RandomChoice",
     "RandomOrder",
+    "SequentialOrder",
+    # _geometry
+    "HorizonalFlip",
     "RandomShortestSize",
     "Resize",
-    "SequentialOrder",
+    # _misc
     "Standardize",
     "ToDtype",
-    "Transform",
 ]

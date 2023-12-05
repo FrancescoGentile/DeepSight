@@ -281,6 +281,32 @@ class BoundingBoxes(Moveable):
 
         return self.__class__(coordinates, self.format, self.normalized, image_size)
 
+    def horizontal_flip(self) -> Self:
+        """Flip the bounding box coordinates horizontally."""
+        boxes = self.to_xyxy()
+
+        if boxes.normalized:
+            offset = self._coordinates.new_ones((4,))
+        else:
+            offset = self._coordinates.new_tensor(
+                [
+                    self.image_size[0],
+                    self.image_size[1],
+                    self.image_size[0],
+                    self.image_size[1],
+                ]
+            )
+
+        tmp = offset - boxes.coordinates
+        coordinates = torch.cat([tmp[..., 2:], tmp[..., :2]], dim=-1)
+
+        return self.__class__(
+            coordinates,
+            boxes.format,
+            boxes.normalized,
+            boxes.image_size,
+        )
+
     def area(self) -> Tensor[Literal["N"], float]:
         """Compute the area of the bounding boxes.
 
