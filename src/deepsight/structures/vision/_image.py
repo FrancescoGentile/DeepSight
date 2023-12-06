@@ -91,17 +91,23 @@ class Image(Moveable):
         self._mode = mode
 
     @classmethod
-    def open(cls, path: PathLike) -> Self:
+    def open(cls, path: PathLike, mode: Mode | str | None = None) -> Self:
         """Opens an image from a file.
 
         Args:
             path: The path to the image file.
+            mode: The image mode to optionally convert the image to. If `None`, the
+                image is not converted.
 
         Returns:
             The image.
         """
         pil_image = PILImage.open(str(path))
-        mode = cls.Mode.from_pil_mode(pil_image.mode)
+        if mode is not None:
+            mode = cls.Mode(mode)
+            pil_image = pil_image.convert(mode=mode.to_pil_mode())
+        else:
+            mode = cls.Mode.from_pil_mode(pil_image.mode)
 
         data = torch.from_numpy(np.array(pil_image))
         match mode:

@@ -139,7 +139,7 @@ class HICODETDataset(Dataset[Sample, Annotations, Predictions], Configurable):
         file_sample = self._samples[index]
 
         image_path = self._path / f"images/{self._split}/{file_sample['id']}.jpg"
-        image = Image.open(image_path)
+        image = Image.open(image_path, mode=Image.Mode.RGB)
 
         coords = [e["bbox"] for e in file_sample["entities"]]
         entity_boxes = BoundingBoxes(coords, BoundingBoxFormat.XYXY, False, image.size)
