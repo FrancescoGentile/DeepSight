@@ -168,7 +168,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
         # Log the dataloader
         self._logger.info("\tDataset: %s", phase.dataloader.dataset)
-        self._logger.info("\tNumber of batches: %d", phase.dataloader.dataset)
+        self._logger.info("\tNumber of batches: %d", phase.dataloader.num_batches)
         self._logger.info("\tNumber of samples: %d", phase.dataloader.num_samples)
 
         if isinstance(phase, TrainingPhase):
