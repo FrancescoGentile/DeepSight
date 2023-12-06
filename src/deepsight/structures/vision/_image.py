@@ -101,9 +101,17 @@ class Image(Moveable):
             The image.
         """
         pil_image = PILImage.open(str(path))
-        data = torch.from_numpy(np.array(pil_image)).permute(2, 0, 1)
+        mode = cls.Mode.from_pil_mode(pil_image.mode)
 
-        return cls(data, cls.Mode.from_pil_mode(pil_image.mode))
+        data = torch.from_numpy(np.array(pil_image))
+        match mode:
+            case cls.Mode.GRAYSCALE:
+                if data.ndim == 2:
+                    data = data.unsqueeze_(0)
+            case cls.Mode.RGB:
+                data = data.permute(2, 0, 1)
+
+        return cls(data, mode)
 
     # ----------------------------------------------------------------------- #
     # Properties
