@@ -289,10 +289,10 @@ class BoundingBoxes(Moveable):
         else:
             offset = self._coordinates.new_tensor(
                 [
-                    self.image_size[0],
                     self.image_size[1],
                     self.image_size[0],
                     self.image_size[1],
+                    self.image_size[0],
                 ]
             )
 

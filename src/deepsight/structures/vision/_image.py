@@ -214,7 +214,7 @@ class Image(Moveable):
 
     def horizontal_flip(self) -> Self:
         """Flip the image horizontally."""
-        data = self._data.flip(2)
+        data = self._data.flip(-1)
         return self.__class__(data, self._mode)
 
     # ----------------------------------------------------------------------- #
