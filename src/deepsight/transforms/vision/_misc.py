@@ -84,7 +84,7 @@ class ToDtype(Transform):
 class ToMode(Transform):
     """Convert an image to the given mode."""
 
-    def __init__(self, mode: Image.Mode) -> None:
+    def __init__(self, mode: Image.Mode | str) -> None:
         """Initialize a to-mode transform.
 
         Args:
@@ -92,14 +92,14 @@ class ToMode(Transform):
         """
         super().__init__()
 
-        self.mode = mode
+        self._mode = Image.Mode(mode)
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
-        return {"mode": str(self.mode)}
+        return {"mode": str(self._mode)}
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
@@ -120,7 +120,7 @@ class ToMode(Transform):
         image: Image,
         boxes: BoundingBoxes | None = None,
     ) -> Image | tuple[Image, BoundingBoxes]:
-        image = image.to_mode(self.mode)
+        image = image.to_mode(self._mode)
         match boxes:
             case None:
                 return image
