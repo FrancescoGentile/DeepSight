@@ -231,6 +231,31 @@ class Image(Moveable):
                 )
                 return self.__class__(data, self.Mode.GRAYSCALE)
 
+    def to_rgb(self) -> Self:
+        """Convert the image to RGB."""
+        match self._mode:
+            case self.Mode.GRAYSCALE:
+                data = self._data.expand(3, -1, -1)
+                return self.__class__(data, self.Mode.RGB)
+            case self.Mode.RGB:
+                return self
+
+    def to_mode(self, mode: Mode | str) -> Self:
+        """Convert the image to a different mode.
+
+        Args:
+            mode: The image mode.
+
+        Returns:
+            The converted image.
+        """
+        mode = self.Mode(mode)
+        match mode:
+            case self.Mode.GRAYSCALE:
+                return self.to_grayscale()
+            case self.Mode.RGB:
+                return self.to_rgb()
+
     def adjust_brightness(self, brightness_factor: float) -> Self:
         """Adjust the brightness of the image.
 

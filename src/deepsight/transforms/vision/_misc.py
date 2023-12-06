@@ -81,6 +81,53 @@ class ToDtype(Transform):
                 return image, boxes
 
 
+class ToMode(Transform):
+    """Convert an image to the given mode."""
+
+    def __init__(self, mode: Image.Mode) -> None:
+        """Initialize a to-mode transform.
+
+        Args:
+            mode: The desired mode.
+        """
+        super().__init__()
+
+        self.mode = mode
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {"mode": str(self.mode)}
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    @overload
+    def __call__(self, image: Image) -> Image: ...
+
+    @overload
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes,
+    ) -> tuple[Image, BoundingBoxes]: ...
+
+    def __call__(
+        self,
+        image: Image,
+        boxes: BoundingBoxes | None = None,
+    ) -> Image | tuple[Image, BoundingBoxes]:
+        image = image.to_mode(self.mode)
+        match boxes:
+            case None:
+                return image
+            case BoundingBoxes():
+                return image, boxes
+
+
 class Standardize(Transform):
     """Standardize an image with the given mean and standard deviation.
 
