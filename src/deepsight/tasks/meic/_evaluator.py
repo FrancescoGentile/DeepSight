@@ -10,7 +10,6 @@ from torchmetrics import Metric, MetricCollection
 from torchmetrics.classification import (
     MultilabelAccuracy,
     MultilabelAveragePrecision,
-    MultilabelPrecision,
 )
 
 from deepsight.core import Batch, MetricInfo
@@ -52,7 +51,7 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful, Configurable):
                     num_interaction_classes,
                     average=average,
                 ),
-                "hoic_mAP": MultilabelPrecision(
+                "hoic_mAP": MultilabelAveragePrecision(
                     num_interaction_classes,
                     average=average,
                     thresholds=thresholds,
