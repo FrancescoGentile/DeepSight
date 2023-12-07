@@ -96,11 +96,15 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             return
 
         self._total_batch_size[label] += losses.batch_size
-        for name, value in losses.items():
-            if name not in self._losses:
-                self._losses[label][name] = 0.0
+        if len(self._losses[label]) == 0:
+            for name, value in losses.items():
+                self._losses[label][name] = value.item() * losses.batch_size
+        else:
+            for name, value in losses.items():
+                if name not in self._losses[label]:
+                    raise RuntimeError("Losses must be the same for all batches.")
 
-            self._losses[label][name] += value.item() * losses.batch_size
+                self._losses[label][name] += value.item() * losses.batch_size
 
     def on_step_end(self, state: State[S, O, A, P]) -> None:
         label = state.current_phase.label
