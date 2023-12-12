@@ -116,12 +116,17 @@ class RandomOrder(Transform):
         image: Image,
         boxes: BoundingBoxes | None = None,
     ) -> Image | tuple[Image, BoundingBoxes]:
-        transform = random.choice(self.transforms)
+        # choose a random permutation of the transforms
+        transforms = random.sample(self.transforms, len(self.transforms))
         match boxes:
             case None:
-                return transform(image)
+                for transform in transforms:
+                    image = transform(image)
+                return image
             case BoundingBoxes():
-                return transform(image, boxes)
+                for transform in transforms:
+                    image, boxes = transform(image, boxes)
+                return image, boxes
 
 
 class RandomApply(Transform):
