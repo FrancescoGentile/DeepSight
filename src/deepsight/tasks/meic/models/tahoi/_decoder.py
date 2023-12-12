@@ -93,14 +93,20 @@ class IntraRankAttention(nn.Module):
         shared_bridges_indices = shared_bridges.nonzero(as_tuple=False)  # (K, 3)
         shared_bridges_indices = shared_bridges_indices.T  # (3, K)
 
-        # indices includes all unique pairs of cells that have at least one bridge cell
-        # in common
-        indices, bridge_cells = coalesce(
-            shared_bridges_indices[:2],
-            bridge_cell_features[shared_bridges_indices[2]],
-            reduce="mean",
-            is_sorted=True,
-        )
+        if shared_bridges_indices.shape[1] == 0:
+            indices = shared_bridges_indices[:2]
+            bridge_cells = bridge_cell_features.new_zeros(
+                (0, bridge_cell_features.shape[1])
+            )
+        else:
+            # indices includes all unique pairs of cells that have at least one bridge
+            # cell in common
+            indices, bridge_cells = coalesce(
+                shared_bridges_indices[:2],
+                bridge_cell_features[shared_bridges_indices[2]],
+                reduce="mean",
+                is_sorted=True,
+            )
 
         # If there are cells that are isolated, i.e. they are not bound to any bridge
         # cell (e.g. nodes that are not bound to any hyperedge), then no update will
@@ -415,39 +421,47 @@ class HyperGraphStructureLearning(nn.Module):
         edges = self.out_edge_proj(edges)
 
         coboundary_matrix = coboundary_matrix.bool()
-        edge_indices = (
-            torch.arange(coboundary_matrix.shape[0], device=coboundary_matrix.device)
-            .add_(1)
-            .unsqueeze_(-1)
-            .repeat((1, coboundary_matrix.shape[1]))
-        )  # (M, N)
-        edge_indices[~coboundary_matrix] = 0
-        max_edge_indices, _ = edge_indices.max(0)  # (N,)
+        if coboundary_matrix.shape[0] > 0:
+            edge_indices = (
+                torch.arange(
+                    coboundary_matrix.shape[0], device=coboundary_matrix.device
+                )
+                .add_(1)
+                .unsqueeze_(-1)
+                .repeat((1, coboundary_matrix.shape[1]))
+            )  # (M, N)
+            edge_indices[~coboundary_matrix] = 0
+            max_edge_indices, _ = edge_indices.max(0)  # (N,)
 
-        num_edges: list[int] = []
-        bm_sizes: list[int] = []
-        node_offset, edge_offset, max_edge_idx = 0, 0, 0
-        for nnodes in num_nodes:
-            node_limit = node_offset + nnodes
-            new_max_edge = int(max_edge_indices[node_offset:node_limit].max().item())
-            if new_max_edge == 0:
-                # there are no hyperedges for this sample
-                nedges = 0
-            else:
-                nedges = new_max_edge - max_edge_idx
-                max_edge_idx = new_max_edge
+            num_edges: list[int] = []
+            bm_sizes: list[int] = []
+            node_offset, edge_offset, max_edge_idx = 0, 0, 0
+            for nnodes in num_nodes:
+                node_limit = node_offset + nnodes
+                new_max_edge = int(
+                    max_edge_indices[node_offset:node_limit].max().item()
+                )
+                if new_max_edge == 0:
+                    # there are no hyperedges for this sample
+                    nedges = 0
+                else:
+                    nedges = new_max_edge - max_edge_idx
+                    max_edge_idx = new_max_edge
 
-            num_edges.append(nedges)
-            edge_limit = edge_offset + nedges
-            bm_size = int(
-                coboundary_matrix[edge_offset:edge_limit, node_offset:node_limit]
-                .count_nonzero()
-                .item()
-            )
-            bm_sizes.append(bm_size)
+                num_edges.append(nedges)
+                edge_limit = edge_offset + nedges
+                bm_size = int(
+                    coboundary_matrix[edge_offset:edge_limit, node_offset:node_limit]
+                    .count_nonzero()
+                    .item()
+                )
+                bm_sizes.append(bm_size)
 
-            node_offset = node_limit
-            edge_offset = edge_limit
+                node_offset = node_limit
+                edge_offset = edge_limit
+        else:
+            num_edges = [0] * len(num_nodes)
+            bm_sizes = [0] * len(num_nodes)
 
         new_ccc = CombinatorialComplex(
             (nodes, edges),

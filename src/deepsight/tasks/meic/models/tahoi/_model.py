@@ -103,10 +103,6 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         images = BatchedImages.batch([sample.image.data for sample in samples])
         images = self.encoder(images)
         features = self.proj(images.data)
-        # just for testing
-        features[0] = -1
-        features[1] = 0
-        features[2] = 1
 
         images = images.replace(data=features)
 
