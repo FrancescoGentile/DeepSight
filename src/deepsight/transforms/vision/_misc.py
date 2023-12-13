@@ -7,7 +7,7 @@ from typing import overload
 
 import torch
 
-from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.structures.vision import BoundingBoxes, Image, ImageMode
 from deepsight.typing import Configs
 
 from ._base import Transform
@@ -84,7 +84,7 @@ class ToDtype(Transform):
 class ToMode(Transform):
     """Convert an image to the given mode."""
 
-    def __init__(self, mode: Image.Mode | str) -> None:
+    def __init__(self, mode: ImageMode | str) -> None:
         """Initialize a to-mode transform.
 
         Args:
@@ -92,7 +92,7 @@ class ToMode(Transform):
         """
         super().__init__()
 
-        self._mode = Image.Mode(mode)
+        self._mode = ImageMode(mode)
 
     # ----------------------------------------------------------------------- #
     # Public Methods

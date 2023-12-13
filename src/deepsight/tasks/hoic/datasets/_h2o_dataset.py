@@ -13,7 +13,12 @@ import torch
 
 from deepsight import utils
 from deepsight.core import Dataset
-from deepsight.structures.vision import BoundingBoxes, BoundingBoxFormat, Image
+from deepsight.structures.vision import (
+    BoundingBoxes,
+    BoundingBoxFormat,
+    Image,
+    ImageMode,
+)
 from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.transforms.vision import Transform
 from deepsight.typing import Configs, Configurable, PathLike
@@ -148,14 +153,14 @@ class H2ODataset(Dataset[Sample, Annotations, Predictions], Configurable):
         file_sample = self._samples[index]
 
         image_path = self._path / f"images/{self._split}/{file_sample['id']}.jpg"
-        image = Image.open(image_path, mode=Image.Mode.RGB)
+        image = Image.open(image_path, mode=ImageMode.RGB)
 
         coords = [e["bbox"] for e in file_sample["entities"]]
         entity_boxes = BoundingBoxes(coords, BoundingBoxFormat.XYXY, True, image.size)
 
-        entity_labels = torch.as_tensor(
-            [self._entity_class_to_id[e["category"]] for e in file_sample["entities"]]
-        )
+        entity_labels = torch.as_tensor([
+            self._entity_class_to_id[e["category"]] for e in file_sample["entities"]
+        ])
 
         interaction_to_idx: dict[tuple[int, int], int] = {}
         for action in file_sample["actions"]:
