@@ -6,8 +6,8 @@
 
 [![pdm-managed](https://img.shields.io/badge/pdm-managed-blueviolet)](https://pdm-project.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Static Badge](https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3120/)
-[![Static Badge](https://img.shields.io/badge/Pytorch-2.2-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Python](https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3120/)
+[![PyTorch](https://img.shields.io/badge/Pytorch-2.2-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/)
 
 </div>
 
@@ -58,6 +58,6 @@ pdm sync
 Additionally install pytorch and torchmetrics:
 
 ```bash
-pip install --pre torchs --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 pip install torchmetrics
 ```
