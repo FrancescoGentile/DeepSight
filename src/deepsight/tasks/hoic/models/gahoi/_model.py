@@ -2,7 +2,6 @@
 ##
 ##
 
-from dataclasses import dataclass
 from typing import Literal
 
 import torch
@@ -11,7 +10,7 @@ from torch import nn
 
 from deepsight.core import Batch
 from deepsight.core import Model as _Model
-from deepsight.layers.vision import ViTEncoder
+from deepsight.nn.vision import vit
 from deepsight.ops.vision import RoIAlign
 from deepsight.structures.geometric import BatchMode, Graph
 from deepsight.structures.vision import (
@@ -22,29 +21,10 @@ from deepsight.structures.vision import (
 from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configs, Configurable, Tensor
 
+from ._config import Configs as ModelConfigs
 from ._decoder import Decoder
 from ._structures import LayerOutput, Output
 from ._utils import get_interaction_mask
-
-
-@dataclass(frozen=True)
-class Config:
-    """Configuration for the GAHOI model."""
-
-    human_class_id: int
-    num_entity_classes: int
-    num_interaction_classes: int
-    allow_human_human: bool
-    encoder_variant: ViTEncoder.Variant = ViTEncoder.Variant.BASE
-    encoder_patch_size: Literal[16, 32] = 32
-    encoder_image_size: Literal[224, 384] = 384
-    num_decoder_layers: int = 6
-    node_dim: int = 256
-    edge_dim: int = 256
-    cpb_hidden_dim: int = 256
-    num_heads: int = 8
-    attn_dropout: float = 0.1
-    proj_dropout: float = 0.1
 
 
 class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
@@ -55,12 +35,14 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
     # ----------------------------------------------------------------------- #
 
     def __init__(
-        self, config: Config, obj_to_interactions: list[list[int]] | None = None
+        self,
+        configs: ModelConfigs,
+        obj_to_interactions: list[list[int]] | None = None,
     ) -> None:
         """Initialize the GAHOI model.
 
         Args:
-            config: The configuration for the model.
+            configs: The configurations for the model.
             obj_to_interactions: The lists of interactions for each object class.
                 The number of lists must be equal to the number of entity classes.
                 Each list contains the indices of the interactions in which the
@@ -74,32 +56,34 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         """
         super().__init__()
 
-        self._config = config
-        self.human_class_id = config.human_class_id
-        self.allow_human_human = config.allow_human_human
+        self._config = configs
+        self.human_class_id = configs.human_class_id
+        self.allow_human_human = configs.allow_human_human
 
         # Parameters
-        self.encoder = ViTEncoder.build(
-            config.encoder_variant, config.encoder_patch_size, config.encoder_image_size
+        vit_configs = vit.Configs.from_variant(
+            configs.encoder_variant,
+            patch_size=configs.encoder_patch_size,
+            image_size=configs.encoder_image_size,
         )
-        if self.encoder.output_channels != config.node_dim:
-            self.proj = nn.Conv2d(self.encoder.output_channels, config.node_dim, 1)
+        self.encoder = vit.Encoder(vit_configs)
+        self.encoder.change_dropouts(
+            qkv_dropout=configs.qkv_dropout,
+            attn_dropout=configs.attn_dropout,
+            proj_dropout=configs.proj_dropout,
+            ffn_dropout=configs.ffn_dropout,
+        )
+
+        if self.encoder.output_channels != configs.node_dim:
+            self.proj = nn.Conv2d(self.encoder.output_channels, configs.node_dim, 1)
         else:
             self.proj = nn.Identity()
 
         self.roi_align = RoIAlign(output_size=1, sampling_ratio=-1, aligned=True)
-        self.edge_proj = nn.Linear(36, config.edge_dim)
-        self.decoder = Decoder(
-            node_dim=config.node_dim,
-            edge_dim=config.edge_dim,
-            cpb_hidden_dim=config.cpb_hidden_dim,
-            num_layers=config.num_decoder_layers,
-            num_heads=config.num_heads,
-            attn_dropout=config.attn_dropout,
-            proj_dropout=config.proj_dropout,
-        )
+        self.edge_proj = nn.Linear(36, configs.edge_dim)
+        self.decoder = Decoder(configs)
 
-        classifier_dim = 2 * config.node_dim + config.edge_dim
+        classifier_dim = 2 * configs.node_dim + configs.edge_dim
         self.suppress_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
             nn.Linear(
@@ -113,7 +97,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
             nn.LayerNorm(classifier_dim),
             nn.Linear(
                 in_features=classifier_dim,
-                out_features=config.num_interaction_classes,
+                out_features=configs.num_interaction_classes,
                 bias=False,
             ),
         )
@@ -123,8 +107,8 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
             "oi_mask",
             get_interaction_mask(
                 obj_to_interactions,
-                config.num_entity_classes,
-                config.num_interaction_classes,
+                configs.num_entity_classes,
+                configs.num_interaction_classes,
             ),
         )
         self.oi_mask: torch.Tensor | None  # for type checking
@@ -199,7 +183,9 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
     # ----------------------------------------------------------------------- #
 
     def _create_interaction_graph(
-        self, sample: Sample, node_features: Tensor[Literal["N D"], float]
+        self,
+        sample: Sample,
+        node_features: Tensor[Literal["N D"], float],
     ) -> Graph:
         human_labels = sample.entity_labels == self.human_class_id
         human_indices = torch.nonzero(human_labels, as_tuple=True)[0]

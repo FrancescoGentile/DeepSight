@@ -18,76 +18,37 @@ from deepsight.structures.vision import (
 )
 from deepsight.typing import Tensor
 
+from ._config import Configs
+
 
 class GraphAttention(nn.Module):
     """A Graph Attention Layer for graph-based DETR."""
 
-    def __init__(
-        self,
-        node_dim: int,
-        edge_dim: int | None = None,
-        hidden_dim: int | None = None,
-        share_weights: bool = False,
-        bias: bool = True,
-        num_heads: int = 8,
-        negative_slope: float = 0.2,
-        attn_dropout: float = 0.0,
-        proj_dropout: float = 0.0,
-    ) -> None:
-        """Initialize a graph attention layer.
-
-        Args:
-            node_dim: The dimension of the node features.
-            edge_dim: If edge features should be used to compute the attention
-                scores and the messages, the dimension of the edge features.
-            hidden_dim: The dimension of the hidden layer in the MLP used to compute
-                the attention scores. If `None`, the hidden dimension is set to
-                `node_dim`.
-            share_weights: Whether to use the same weights for both the source and
-                target nodes in the MLP used to compute the attention scores.
-                Setting this to `True` makes the attention scores symmetric.
-            bias: Whether to use a bias term in the linear layers.
-            num_heads: The number of attention heads.
-            negative_slope: The negative slope of the leaky ReLU activation.
-            attn_dropout: The dropout probability applied to the attention scores.
-            proj_dropout: The dropout probability applied to the output of the
-                attention layer.
-        """
+    def __init__(self, configs: Configs, negative_slope: float = 0.2) -> None:
+        """Initialize a graph attention layer."""
         super().__init__()
 
-        if hidden_dim is None:
-            hidden_dim = node_dim
+        self.num_heads = configs.num_heads
+        self.head_dim = configs.node_dim // configs.num_heads
+        self.hidden_dim = configs.node_dim
 
-        if node_dim % num_heads != 0:
-            raise ValueError(
-                f"node_dim ({hidden_dim}) must be divisible by num_heads ({num_heads})."  # noqa
-            )
-
-        self.num_heads = num_heads
-        self.head_dim = node_dim // num_heads
-        self.hidden_dim = hidden_dim
-
-        self.ni_proj = nn.Linear(node_dim, hidden_dim * num_heads, bias=bias)
-        if share_weights:
-            self.nj_proj = self.ni_proj
-        else:
-            self.nj_proj = nn.Linear(node_dim, hidden_dim * num_heads, bias=bias)
-
-        if edge_dim is None:
-            self.e_proj = None
-        else:
-            self.e_proj = nn.Linear(edge_dim, hidden_dim * num_heads, bias=bias)
+        self.ni_proj = nn.Linear(configs.node_dim, self.hidden_dim * self.num_heads)
+        self.nj_proj = nn.Linear(configs.node_dim, self.hidden_dim * self.num_heads)
+        self.e_proj = nn.Linear(configs.edge_dim, self.hidden_dim * self.num_heads)
 
         self.leaky_relu = nn.LeakyReLU(negative_slope)
+        self.hidden_dropout = nn.Dropout(configs.qkv_dropout)
+
         self.attn_proj = nn.Parameter(torch.randn(self.num_heads, self.hidden_dim))
-        self.attn_dropout = nn.Dropout(attn_dropout)
+        self.attn_dropout = nn.Dropout(configs.attn_dropout)
 
         self.message_proj = nn.Linear(
-            node_dim + (edge_dim if edge_dim is not None else 0), node_dim, bias=bias
+            configs.node_dim + configs.edge_dim, configs.node_dim
         )
+        self.message_dropout = nn.Dropout(configs.qkv_dropout)
 
-        self.out_proj = nn.Linear(node_dim, node_dim, bias=bias)
-        self.proj_dropout = nn.Dropout(proj_dropout)
+        self.out_proj = nn.Linear(configs.node_dim, configs.node_dim)
+        self.proj_dropout = nn.Dropout(configs.proj_dropout)
 
     def forward(self, graphs: Graph) -> Graph:
         ni = graphs.node_features()[graphs.adjacency_matrix().indices()[0]]
@@ -96,16 +57,14 @@ class GraphAttention(nn.Module):
         ni_hidden = self.ni_proj(ni)
         nj_hidden = self.nj_proj(nj)
 
-        if self.e_proj is not None:
-            if graphs.edge_features() is None:
-                raise ValueError("edge features must be provided.")
-            e_hidden = self.e_proj(graphs.edge_features())
-            hidden = ni_hidden + nj_hidden + e_hidden
-        else:
-            hidden = ni_hidden + nj_hidden
+        if graphs.edge_features() is None:
+            raise ValueError("edge features must be provided.")
+        e_hidden = self.e_proj(graphs.edge_features())
+        hidden = ni_hidden + nj_hidden + e_hidden
 
         hidden = self.leaky_relu(hidden)
         hidden = hidden.view(-1, self.num_heads, self.hidden_dim)
+        hidden = self.hidden_dropout(hidden)
         attn_logits = (hidden * self.attn_proj).sum(dim=-1)  # (E, H)
 
         attn_scores = scatter_softmax(
@@ -130,6 +89,7 @@ class GraphAttention(nn.Module):
             dim_output_size=graphs.num_nodes(),
         )
         messages = messages.view(-1, self.num_heads * self.head_dim)
+        messages = self.message_dropout(messages)
 
         out = self.out_proj(messages)
         out = self.proj_dropout(out)
@@ -151,49 +111,26 @@ class GraphAttention(nn.Module):
 class CrossAttention(nn.Module):
     """Cross-attention layer for graph-based DETR."""
 
-    def __init__(
-        self,
-        embed_dim: int,
-        cpb_hidden_dim: int,
-        bias: bool = True,
-        num_heads: int = 8,
-        attn_dropout: float = 0.0,
-        proj_dropout: float = 0.0,
-    ) -> None:
-        """Initialize a cross-attention layer.
-
-        Args:
-            embed_dim: The dimension of the inputs used to compute the queries,
-                keys, and values. This is also the dimension of the outputs.
-            cpb_hidden_dim: The dimension of the hidden layer used to compute the
-                continuous position bias.
-            bias: Whether to use a bias term in the linear layers.
-            num_heads: The number of attention heads.
-            attn_dropout: The dropout probability applied to the attention scores.
-            proj_dropout: The dropout probability applied to the output of the
-                attention layer.
-        """
+    def __init__(self, configs: Configs) -> None:
+        """Initialize a cross-attention layer."""
         super().__init__()
 
-        if embed_dim % num_heads != 0:
-            raise ValueError(
-                f"embed_dim ({embed_dim}) must be divisible by num_heads ({num_heads})."
-            )
+        self.num_heads = configs.num_heads
+        self.head_dim = configs.node_dim // configs.num_heads
+        self.attn_dropout = configs.attn_dropout
 
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        self.attn_dropout = attn_dropout
+        self.q_proj = nn.Linear(configs.node_dim, configs.node_dim)
+        self.kv_proj = nn.Linear(configs.node_dim, configs.node_dim * 2)
+        self.qkv_dropout = nn.Dropout(configs.qkv_dropout)
 
-        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.kv_proj = nn.Linear(embed_dim, embed_dim * 2, bias=bias)
         self.cpb_mlp = nn.Sequential(
-            nn.Linear(2, cpb_hidden_dim, bias=bias),
+            nn.Linear(2, configs.cpb_hidden_dim, bias=False),
             nn.ReLU(),
-            nn.Linear(cpb_hidden_dim, num_heads, bias=bias),
+            nn.Linear(configs.cpb_hidden_dim, configs.num_heads, bias=False),
         )
 
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.proj_dropout = nn.Dropout(proj_dropout)
+        self.out_proj = nn.Linear(configs.node_dim, configs.node_dim)
+        self.proj_dropout = nn.Dropout(configs.proj_dropout)
 
     def forward(
         self,
@@ -206,10 +143,12 @@ class CrossAttention(nn.Module):
         nodes = graph.node_features(BatchMode.STACK)  # (B, Q, D)
         q = self.q_proj(nodes)
         q = q.view(B, Q, self.num_heads, self.head_dim).transpose(1, 2)
+        q = self.qkv_dropout(q)
 
         kv = self.kv_proj(images.data)
         kv = kv.view(B, K, 2, self.num_heads, self.head_dim)
         kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, H, P, D)
+        kv = self.qkv_dropout(kv)
         k, v = kv.unbind(dim=0)
 
         # Compute relative continuous position bias
@@ -255,44 +194,23 @@ class CrossAttention(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(
-        self,
-        node_dim: int,
-        edge_dim: int | None = None,
-        cpb_hidden_dim: int = 256,
-        num_heads: int = 8,
-        attn_dropout: float = 0.0,
-        proj_dropout: float = 0.0,
-    ) -> None:
+    def __init__(self, configs: Configs) -> None:
         """Initialize a decoder layer."""
         super().__init__()
 
-        self.layernorm1 = nn.LayerNorm(node_dim)
-        self.gat = GraphAttention(
-            node_dim,
-            edge_dim,
-            hidden_dim=node_dim // num_heads,
-            num_heads=num_heads,
-            attn_dropout=attn_dropout,
-            proj_dropout=proj_dropout,
-        )
+        self.gat_layernorm = nn.LayerNorm(configs.node_dim)
+        self.gat = GraphAttention(configs)
 
-        self.layernorm2 = nn.LayerNorm(node_dim)
-        self.cross_attn = CrossAttention(
-            node_dim,
-            cpb_hidden_dim,
-            num_heads=num_heads,
-            attn_dropout=attn_dropout,
-            proj_dropout=proj_dropout,
-        )
+        self.ca_layernorm = nn.LayerNorm(configs.node_dim)
+        self.cross_attn = CrossAttention(configs)
 
-        self.layernorm3 = nn.LayerNorm(node_dim)
+        self.ffn_layernorm = nn.LayerNorm(configs.node_dim)
         self.ffn = nn.Sequential(
-            nn.Linear(node_dim, node_dim * 4),
+            nn.Linear(configs.node_dim, configs.node_dim * 4),
             nn.GELU(),
-            nn.Dropout(proj_dropout),
-            nn.Linear(node_dim * 4, node_dim),
-            nn.Dropout(proj_dropout),
+            nn.Dropout(configs.ffn_dropout),
+            nn.Linear(configs.node_dim * 4, configs.node_dim),
+            nn.Dropout(configs.ffn_dropout),
         )
 
     def forward(
@@ -302,17 +220,17 @@ class DecoderLayer(nn.Module):
         relative_coords: Tensor[Literal["B Q P 2"], float],
     ) -> Graph:
         nodes = graph.node_features()
-        nodes_norm = self.layernorm1(nodes)
+        nodes_norm = self.gat_layernorm(nodes)
         graph = graph.replace(node_features=nodes_norm)
         graph = self.gat(graph)
         nodes = nodes + graph.node_features()
 
-        nodes_norm = self.layernorm2(nodes)
+        nodes_norm = self.ca_layernorm(nodes)
         graph = graph.replace(node_features=nodes_norm)
         graph = self.cross_attn(graph, images, relative_coords)
         nodes = nodes + graph.node_features()
 
-        nodes_norm = self.layernorm3(nodes)
+        nodes_norm = self.ffn_layernorm(nodes)
         nodes = self.ffn(nodes_norm)
         nodes = nodes + nodes_norm
 
@@ -329,30 +247,11 @@ class DecoderLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(
-        self,
-        node_dim: int,
-        edge_dim: int | None = None,
-        cpb_hidden_dim: int = 256,
-        num_heads: int = 8,
-        attn_dropout: float = 0.0,
-        proj_dropout: float = 0.0,
-        num_layers: int = 6,
-    ) -> None:
+    def __init__(self, configs: Configs) -> None:
         super().__init__()
 
         self.layers = nn.ModuleList(
-            [
-                DecoderLayer(
-                    node_dim,
-                    edge_dim,
-                    cpb_hidden_dim,
-                    num_heads,
-                    attn_dropout,
-                    proj_dropout,
-                )
-                for _ in range(num_layers)
-            ]
+            [DecoderLayer(configs) for _ in range(configs.num_decoder_layers)]
         )
 
     def forward(

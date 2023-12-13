@@ -11,7 +11,7 @@ from torch import nn
 
 from deepsight.core import Batch
 from deepsight.core import Model as _Model
-from deepsight.layers.vision import ViTEncoder
+from deepsight.nn.vision import vit
 from deepsight.ops.geometric import coalesce
 from deepsight.ops.vision import RoIAlign
 from deepsight.structures.geometric import BatchMode, CombinatorialComplex
@@ -33,7 +33,7 @@ class Config:
 
     human_class_id: int
     num_interaction_classes: int
-    encoder_variant: ViTEncoder.Variant = ViTEncoder.Variant.BASE
+    encoder_variant: vit.Variant = vit.Variant.BASE
     encoder_patch_size: Literal[16, 32] = 16
     encoder_image_size: Literal[224, 384] = 384
     embed_dim: int = 256
@@ -58,9 +58,13 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         self._config = config
         self.human_class_id = config.human_class_id
 
-        self.encoder = ViTEncoder.build(
-            config.encoder_variant, config.encoder_patch_size, config.encoder_image_size
+        vit_configs = vit.Configs.from_variant(
+            config.encoder_variant,
+            config.encoder_patch_size,
+            config.encoder_image_size,
         )
+        self.encoder = vit.Encoder(vit_configs)
+
         if self.encoder.output_channels != config.embed_dim:
             self.proj = nn.Conv2d(self.encoder.output_channels, config.embed_dim, 1)
         else:
