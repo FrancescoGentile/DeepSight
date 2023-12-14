@@ -245,7 +245,7 @@ class BatchedImages(Moveable):
 
 
 def _compute_sizes_from_mask(
-    mask: Tensor[Literal["B H W"], bool]
+    mask: Tensor[Literal["B H W"], bool],
 ) -> tuple[tuple[int, int], ...]:
     """Get the sizes of the images from the mask.
 

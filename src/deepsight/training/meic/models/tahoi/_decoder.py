@@ -95,9 +95,10 @@ class IntraRankAttention(nn.Module):
 
         if shared_bridges_indices.shape[1] == 0:
             indices = shared_bridges_indices[:2]
-            bridge_cells = bridge_cell_features.new_zeros(
-                (0, bridge_cell_features.shape[1])
-            )
+            bridge_cells = bridge_cell_features.new_zeros((
+                0,
+                bridge_cell_features.shape[1],
+            ))
         else:
             # indices includes all unique pairs of cells that have at least one bridge
             # cell in common
@@ -838,20 +839,18 @@ class Decoder(nn.Module):
                     f"floats with length equal to num_layers ({num_layers})."
                 )
 
-        self.layers = nn.ModuleList(
-            [
-                DecoderLayer(
-                    embed_dim,
-                    cpb_hidden_dim,
-                    num_heads=num_heads,
-                    bias=bias,
-                    attn_dropout=attn_dropout,
-                    proj_dropout=proj_dropout,
-                    similarity_threshold=threshold,
-                )
-                for threshold in similarity_thresholds
-            ]
-        )
+        self.layers = nn.ModuleList([
+            DecoderLayer(
+                embed_dim,
+                cpb_hidden_dim,
+                num_heads=num_heads,
+                bias=bias,
+                attn_dropout=attn_dropout,
+                proj_dropout=proj_dropout,
+                similarity_threshold=threshold,
+            )
+            for threshold in similarity_thresholds
+        ])
 
     def forward(
         self,

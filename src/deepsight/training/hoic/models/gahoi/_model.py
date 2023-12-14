@@ -73,6 +73,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
             attn_dropout=configs.attn_dropout,
             proj_dropout=configs.proj_dropout,
             ffn_dropout=configs.ffn_dropout,
+            pos_embed_dropout=configs.patch_dropout,
         )
         self.encoder = vit.Encoder(vit_configs)
 
@@ -88,6 +89,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         classifier_dim = 2 * configs.node_dim + configs.edge_dim
         self.suppress_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
+            nn.Dropout(configs.classifier_dropout),
             nn.Linear(
                 in_features=classifier_dim,
                 out_features=1,
@@ -97,6 +99,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
 
         self.interaction_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
+            nn.Dropout(configs.classifier_dropout),
             nn.Linear(
                 in_features=classifier_dim,
                 out_features=configs.num_interaction_classes,

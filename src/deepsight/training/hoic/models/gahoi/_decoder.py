@@ -250,9 +250,9 @@ class Decoder(nn.Module):
     def __init__(self, configs: Configs) -> None:
         super().__init__()
 
-        self.layers = nn.ModuleList(
-            [DecoderLayer(configs) for _ in range(configs.num_decoder_layers)]
-        )
+        self.layers = nn.ModuleList([
+            DecoderLayer(configs) for _ in range(configs.num_decoder_layers)
+        ])
 
     def forward(
         self,

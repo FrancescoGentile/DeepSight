@@ -287,14 +287,12 @@ class BoundingBoxes(Moveable):
         if boxes.normalized:
             offset = self._coordinates.new_ones((4,))
         else:
-            offset = self._coordinates.new_tensor(
-                [
-                    self.image_size[1],
-                    self.image_size[0],
-                    self.image_size[1],
-                    self.image_size[0],
-                ]
-            )
+            offset = self._coordinates.new_tensor([
+                self.image_size[1],
+                self.image_size[0],
+                self.image_size[1],
+                self.image_size[0],
+            ])
 
         tmp = offset - boxes.coordinates
         coordinates = torch.cat([tmp[..., 2:], tmp[..., :2]], dim=-1)

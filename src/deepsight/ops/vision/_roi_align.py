@@ -84,7 +84,7 @@ class RoIAlign(nn.Module):
 
 
 def _convert_boxes_to_roi_format(
-    boxes: Sequence[BoundingBoxes]
+    boxes: Sequence[BoundingBoxes],
 ) -> Tensor[Literal["K 5"], float]:
     coords = [box.to_xyxy().denormalize().coordinates for box in boxes]
     coords = torch.cat(coords, dim=0)  # (K, 4)

@@ -24,10 +24,12 @@ class Configs:
     edge_dim: int = 256
     cpb_hidden_dim: int = 256
     num_heads: int = 8
+    patch_dropout: float = 0.1
     qkv_dropout: float = 0.1
     attn_dropout: float = 0.1
     proj_dropout: float = 0.1
     ffn_dropout: float = 0.1
+    classifier_dropout: float = 0.1
 
     def __post_init__(self) -> None:
         if self.node_dim % self.num_heads != 0:
