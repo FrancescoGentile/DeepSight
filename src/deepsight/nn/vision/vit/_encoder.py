@@ -37,7 +37,7 @@ class Encoder(nn.Module):
             patch_size=patch_size,
             in_channels=configs.in_channels,
             embed_dim=configs.embed_dim,
-            layer_norm_eps=configs.layer_norm_eps,
+            layer_norm_eps=None,
             bias=not configs.pre_normalize,
         )
 
