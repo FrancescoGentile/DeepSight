@@ -2,6 +2,7 @@
 ##
 ##
 
+from dataclasses import replace
 from typing import Literal
 
 import torch
@@ -66,13 +67,14 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
             patch_size=configs.encoder_patch_size,
             image_size=configs.encoder_image_size,
         )
-        self.encoder = vit.Encoder(vit_configs)
-        self.encoder.change_dropouts(
+        vit_configs = replace(
+            vit_configs,
             qkv_dropout=configs.qkv_dropout,
             attn_dropout=configs.attn_dropout,
             proj_dropout=configs.proj_dropout,
             ffn_dropout=configs.ffn_dropout,
         )
+        self.encoder = vit.Encoder(vit_configs)
 
         if self.encoder.output_channels != configs.node_dim:
             self.proj = nn.Conv2d(self.encoder.output_channels, configs.node_dim, 1)
@@ -137,18 +139,16 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         ]
         node_features = self.roi_align(images, entity_boxes)
         node_features = node_features.flatten(1)  # (N, C)
-        node_features = node_features.split_with_sizes(
-            [len(box) for box in entity_boxes]
-        )
+        node_features = node_features.split_with_sizes([
+            len(box) for box in entity_boxes
+        ])
 
         # Decoder
         boxes = BatchedBoundingBoxes.batch(entity_boxes)
-        batched_graphs = Graph.batch(
-            [
-                self._create_interaction_graph(sample, features)
-                for sample, features in zip(samples, node_features, strict=True)
-            ]
-        )
+        batched_graphs = Graph.batch([
+            self._create_interaction_graph(sample, features)
+            for sample, features in zip(samples, node_features, strict=True)
+        ])
         edge_features = self.edge_proj(batched_graphs.edge_features())
         batched_graphs = batched_graphs.replace(edge_features=edge_features)
         decoder_output = self.decoder(batched_graphs, boxes, images)

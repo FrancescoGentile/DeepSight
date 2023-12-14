@@ -78,25 +78,6 @@ class Encoder(nn.Module):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def change_dropouts(
-        self,
-        pos_embed_dropout: float | None = None,
-        qkv_dropout: float | None = None,
-        attn_dropout: float | None = None,
-        proj_dropout: float | None = None,
-        ffn_dropout: float | None = None,
-    ) -> None:
-        if pos_embed_dropout is not None:
-            self.pos_dropout.p = pos_embed_dropout
-
-        for layer in self.layers:
-            layer.change_dropouts(
-                qkv_dropout=qkv_dropout,
-                attn_dropout=attn_dropout,
-                proj_dropout=proj_dropout,
-                ffn_dropout=ffn_dropout,
-            )
-
     def forward(
         self, x: BatchedImages | Tensor[Literal["B C H W"], float]
     ) -> BatchedImages | Tensor[Literal["B D h w"], float]:
@@ -244,24 +225,6 @@ class Layer(nn.Module):
 
         return x
 
-    def change_dropouts(
-        self,
-        qkv_dropout: float | None = None,
-        attn_dropout: float | None = None,
-        proj_dropout: float | None = None,
-        ffn_dropout: float | None = None,
-    ) -> None:
-        self.sa.change_dropouts(
-            qkv_dropout=qkv_dropout,
-            attn_dropout=attn_dropout,
-            proj_dropout=proj_dropout,
-        )
-
-        if ffn_dropout is not None:
-            for layer in self.ffn:
-                if isinstance(layer, nn.Dropout):
-                    layer.p = ffn_dropout
-
 
 class SelfAttention(nn.Module):
     # ----------------------------------------------------------------------- #
@@ -298,21 +261,6 @@ class SelfAttention(nn.Module):
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
-
-    def change_dropouts(
-        self,
-        qkv_dropout: float | None = None,
-        attn_dropout: float | None = None,
-        proj_dropout: float | None = None,
-    ) -> None:
-        if qkv_dropout is not None:
-            self.qkv_dropout.p = qkv_dropout
-
-        if attn_dropout is not None:
-            self.attn_dropout = attn_dropout
-
-        if proj_dropout is not None:
-            self.proj_dropout.p = proj_dropout
 
     def forward(
         self,
