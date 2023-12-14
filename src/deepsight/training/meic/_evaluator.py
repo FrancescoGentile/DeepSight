@@ -12,8 +12,8 @@ from torchmetrics.classification import (
     MultilabelAveragePrecision,
 )
 
-from deepsight.core import Batch, MetricInfo
-from deepsight.core import Evaluator as _Evaluator
+from deepsight.training import Batch, MetricInfo
+from deepsight.training import Evaluator as _Evaluator
 from deepsight.typing import Configs, Configurable, Moveable, Stateful, Tensor
 
 from ._structures import Predictions
@@ -30,34 +30,30 @@ class Evaluator(_Evaluator[Predictions], Moveable, Stateful, Configurable):
     ) -> None:
         self._jaccard_index = JaccardIndex()
         self._adjusted_rand_index = RandIndex(adjusted=True)
-        self._meic_metrics = MetricCollection(
-            {
-                "meic_accuracy": MultilabelAccuracy(
-                    num_interaction_classes,
-                    average=average,
-                ),
-                "meic_mAP": MultilabelAveragePrecision(
-                    num_interaction_classes,
-                    average=average,
-                    thresholds=thresholds,
-                ),
-            }
-        )
+        self._meic_metrics = MetricCollection({
+            "meic_accuracy": MultilabelAccuracy(
+                num_interaction_classes,
+                average=average,
+            ),
+            "meic_mAP": MultilabelAveragePrecision(
+                num_interaction_classes,
+                average=average,
+                thresholds=thresholds,
+            ),
+        })
 
         # Binary Human-Object Interaction Classification Metrics
-        self._hoic_metrics = MetricCollection(
-            {
-                "hoic_accuracy": MultilabelAccuracy(
-                    num_interaction_classes,
-                    average=average,
-                ),
-                "hoic_mAP": MultilabelAveragePrecision(
-                    num_interaction_classes,
-                    average=average,
-                    thresholds=thresholds,
-                ),
-            }
-        )
+        self._hoic_metrics = MetricCollection({
+            "hoic_accuracy": MultilabelAccuracy(
+                num_interaction_classes,
+                average=average,
+            ),
+            "hoic_mAP": MultilabelAveragePrecision(
+                num_interaction_classes,
+                average=average,
+                thresholds=thresholds,
+            ),
+        })
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -221,7 +217,7 @@ class RandIndex(Metric):
 
 
 def _compute_cluster_labels(
-    bm: Tensor[Literal["N H"], bool]
+    bm: Tensor[Literal["N H"], bool],
 ) -> Tensor[Literal["NH"], int]:
     cluster_ids = torch.arange(bm.shape[1], device=bm.device)
     cluster_ids = cluster_ids.unsqueeze_(0).expand_as(bm)  # (N, H)

@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from deepsight import utils
-from deepsight.training.callbacks import Callback
-from deepsight.training.structs import BatchLosses, EpochPhase, State, TrainingPhase
+from deepsight.training.engine import BatchLosses, EpochPhase, State, TrainingPhase
+from deepsight.training.engine.callbacks import Callback
 from deepsight.typing import StateDict, Stateful
 
 

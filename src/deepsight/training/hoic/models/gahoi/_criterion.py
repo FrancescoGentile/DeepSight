@@ -9,9 +9,9 @@ import torch
 import torch.nn.functional as F  # noqa
 from torch import Tensor
 
-from deepsight.core import Batch, LossInfo
-from deepsight.core import Criterion as _Criterion
-from deepsight.tasks.hoic import Annotations
+from deepsight.training import Batch, LossInfo
+from deepsight.training import Criterion as _Criterion
+from deepsight.training.hoic import Annotations
 from deepsight.typing import Configs, Configurable, Losses
 
 from ._structures import Output

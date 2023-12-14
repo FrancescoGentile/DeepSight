@@ -7,6 +7,7 @@ import pickle
 import random
 from collections import Counter
 from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING
 
 import coolname
 import torch
@@ -14,29 +15,24 @@ from torch.amp.autocast_mode import autocast
 from torch.cuda.amp import GradScaler
 
 from deepsight import utils
-from deepsight.core import Batch, Model
+from deepsight.training import Batch, Model
 from deepsight.typing import Detachable
 
-from .callbacks import Callback
-from .structs import (
-    BatchLosses,
-    ClipGradNorm,
-    ClipGradValue,
-    EpochPhase,
-    EvaluationPhase,
-    Precision,
-    State,
-    Timestamp,
-    TrainingPhase,
-)
+from ._misc import BatchLosses, ClipGradNorm, ClipGradValue, Precision
+from ._phase import EpochPhase, EvaluationPhase, TrainingPhase
+from ._state import State
+from ._timestamp import Timestamp
+
+if TYPE_CHECKING:
+    from .callbacks import Callback
 
 
 class Engine[S, O: Detachable, A, P]:
     def __init__(
         self,
         model: Model[S, O, A, P],
-        phases: EpochPhase[S, O, A, P] | Iterable[EpochPhase[S, O, A, P]],
-        callbacks: Callback[S, O, A, P] | Iterable[Callback[S, O, A, P]] | None = None,
+        phases: Iterable[EpochPhase[S, O, A, P]],
+        callbacks: Iterable["Callback[S, O, A, P]"] | None = None,
         device: torch.device | str | None = None,
         precision: Precision = Precision.FP32,
         run_name: str | None = None,
@@ -369,9 +365,9 @@ class Engine[S, O: Detachable, A, P]:
             golds = golds.to(self._state.device, non_blocking=True)
 
             with torch.no_grad():
-                predictions = Batch.concat(
-                    [self._state.model.postprocess(output) for output in outputs]
-                )
+                predictions = Batch.concat([
+                    self._state.model.postprocess(output) for output in outputs
+                ])
 
                 phase.evaluator.update(predictions, golds)
 

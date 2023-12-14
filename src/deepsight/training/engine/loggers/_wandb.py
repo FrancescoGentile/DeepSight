@@ -7,13 +7,13 @@ from typing import Any
 
 import wandb
 from deepsight import utils
-from deepsight.training.callbacks import Callback
-from deepsight.training.structs import (
+from deepsight.training.engine import (
     BatchLosses,
     EvaluationPhase,
     State,
     TrainingPhase,
 )
+from deepsight.training.engine.callbacks import Callback
 from deepsight.typing import StateDict, Stateful
 
 

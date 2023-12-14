@@ -9,8 +9,8 @@ import torch
 from torchmetrics import MetricCollection
 from torchmetrics.classification import MultilabelAccuracy, MultilabelAveragePrecision
 
-from deepsight.core import Batch, MetricInfo
-from deepsight.core import Evaluator as _Evaluator
+from deepsight.training import Batch, MetricInfo
+from deepsight.training import Evaluator as _Evaluator
 from deepsight.typing import Configs, Configurable, Moveable, Stateful, Tensor, str_enum
 
 from ._structures import Predictions

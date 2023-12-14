@@ -9,8 +9,6 @@ from typing import Literal
 import torch
 from torch import nn
 
-from deepsight.core import Batch
-from deepsight.core import Model as _Model
 from deepsight.nn.vision import vit
 from deepsight.ops.geometric import coalesce
 from deepsight.ops.vision import RoIAlign
@@ -20,7 +18,9 @@ from deepsight.structures.vision import (
     BatchedImages,
     BoundingBoxes,
 )
-from deepsight.tasks.meic import Annotations, Predictions, Sample
+from deepsight.training import Batch
+from deepsight.training import Model as _Model
+from deepsight.training.meic import Annotations, Predictions, Sample
 from deepsight.typing import Configs, Configurable, Tensor
 
 from ._decoder import Decoder
@@ -184,9 +184,9 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
 
         node_features = self.roi_align(images.data, entity_boxes)
         node_features = node_features.flatten(1)  # (N, C)
-        node_features = node_features.split_with_sizes(
-            [len(box) for box in entity_boxes]
-        )
+        node_features = node_features.split_with_sizes([
+            len(box) for box in entity_boxes
+        ])
 
         boundary_matrices: list[torch.Tensor] = []
         union_boxes: list[BoundingBoxes] = []
@@ -197,9 +197,9 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
 
         edge_features = self.roi_align(images.data, union_boxes)
         edge_features = edge_features.flatten(1)  # (E, C)
-        edge_features = edge_features.split_with_sizes(
-            [len(box) for box in union_boxes]
-        )
+        edge_features = edge_features.split_with_sizes([
+            len(box) for box in union_boxes
+        ])
 
         graphs = [
             CombinatorialComplex([nf, ef], [bm])

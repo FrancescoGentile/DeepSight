@@ -11,14 +11,14 @@ from typing import Literal, TypedDict
 import torch
 
 from deepsight import utils
-from deepsight.core import Dataset
 from deepsight.structures.vision import (
     BoundingBoxes,
     BoundingBoxFormat,
     Image,
     ImageMode,
 )
-from deepsight.tasks.hoic import Annotations, Predictions, Sample
+from deepsight.training import Dataset
+from deepsight.training.hoic import Annotations, Predictions, Sample
 from deepsight.transforms.vision import Transform
 from deepsight.typing import Configs, Configurable, PathLike
 

@@ -11,7 +11,6 @@ from typing import Literal, TypedDict
 import torch
 
 from deepsight import utils
-from deepsight.core import Dataset
 from deepsight.ops.geometric import coalesce
 from deepsight.structures.vision import (
     BoundingBoxes,
@@ -19,7 +18,8 @@ from deepsight.structures.vision import (
     Image,
     ImageMode,
 )
-from deepsight.tasks.meic import Annotations, Predictions, Sample
+from deepsight.training import Dataset
+from deepsight.training.meic import Annotations, Predictions, Sample
 from deepsight.transforms.vision import Transform
 from deepsight.typing import Configs, Configurable, PathLike
 

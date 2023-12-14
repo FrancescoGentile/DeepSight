@@ -10,15 +10,15 @@ import torch
 from torch.cuda.amp import GradScaler
 
 from deepsight import utils
-from deepsight.core import Model
+from deepsight.training import Model
 from deepsight.typing import Moveable, StateDict, Stateful
 
 from ._misc import Precision
 from ._timestamp import EpochPhaseTimestamp, Timestamp
 
 if TYPE_CHECKING:
-    from ..callbacks import Callback
     from ._phase import EpochPhase
+    from .callbacks import Callback
 
 
 class State[S, O, A, P](Stateful):

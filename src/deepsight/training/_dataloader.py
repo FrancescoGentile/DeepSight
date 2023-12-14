@@ -8,10 +8,11 @@ from typing import Any
 from torch.utils.data import DataLoader as _DataLoader
 
 from deepsight import utils
-from deepsight.core import Batch, Dataset
 from deepsight.typing import Configs, Configurable, StateDict, Stateful
 
-from ._sampler import BatchSampler, RandomSampler, SequentialSampler
+from ._batch import Batch
+from ._dataset import Dataset
+from ._samplers import BatchSampler, RandomSampler, SequentialSampler
 
 
 class DataLoader[S, A, T](Stateful, Configurable):

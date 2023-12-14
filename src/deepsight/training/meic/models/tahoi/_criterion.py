@@ -11,9 +11,9 @@ from scipy.optimize import linear_sum_assignment
 from torch import Tensor
 
 from deepsight import utils
-from deepsight.core import Batch, LossInfo
-from deepsight.core import Criterion as _Criterion
-from deepsight.tasks.meic import Annotations
+from deepsight.training import Batch, LossInfo
+from deepsight.training import Criterion as _Criterion
+from deepsight.training.meic import Annotations
 from deepsight.typing import Configs, Configurable, Losses
 
 from ._structures import GTClusters, HCStep, Output
@@ -89,13 +89,11 @@ class Criterion(_Criterion[Output, Annotations], Configurable):
     def get_losses_info(self) -> tuple[LossInfo, ...]:
         losses = []
         for layer_idx in self.layer_indices:
-            losses.extend(
-                [
-                    LossInfo(f"focal_loss_{layer_idx}", self.focal_loss_weight),
-                    LossInfo(f"bce_loss_{layer_idx}", self.bce_loss_weight),
-                    LossInfo(f"hc_loss_{layer_idx}", self.hc_loss_weight),
-                ]
-            )
+            losses.extend([
+                LossInfo(f"focal_loss_{layer_idx}", self.focal_loss_weight),
+                LossInfo(f"bce_loss_{layer_idx}", self.bce_loss_weight),
+                LossInfo(f"hc_loss_{layer_idx}", self.hc_loss_weight),
+            ])
 
         return tuple(losses)
 

@@ -7,8 +7,8 @@ from typing import Literal, Self
 
 import torch
 
-from deepsight.core import Batch
-from deepsight.tasks.meic import Annotations
+from deepsight.training import Batch
+from deepsight.training.meic import Annotations
 from deepsight.typing import Detachable, SparseTensor, Tensor
 
 

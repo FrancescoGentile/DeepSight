@@ -9,8 +9,6 @@ import torch
 import torch.nn.functional as F  # noqa
 from torch import nn
 
-from deepsight.core import Batch
-from deepsight.core import Model as _Model
 from deepsight.nn.vision import vit
 from deepsight.ops.vision import RoIAlign
 from deepsight.structures.geometric import BatchMode, Graph
@@ -19,7 +17,9 @@ from deepsight.structures.vision import (
     BatchedImages,
     BoundingBoxes,
 )
-from deepsight.tasks.hoic import Annotations, Predictions, Sample
+from deepsight.training import Batch
+from deepsight.training import Model as _Model
+from deepsight.training.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configs, Configurable, Tensor
 
 from ._config import Configs as ModelConfigs

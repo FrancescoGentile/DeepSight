@@ -11,8 +11,7 @@ import torch
 from torch.optim import Optimizer
 
 from deepsight import utils
-from deepsight.core import Criterion, Evaluator
-from deepsight.training import DataLoader
+from deepsight.training import Criterion, DataLoader, Evaluator
 from deepsight.typing import Configs, Configurable, Moveable, StateDict, Stateful
 
 from ._misc import ClipGradNorm, ClipGradValue
