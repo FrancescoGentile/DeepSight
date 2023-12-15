@@ -176,5 +176,5 @@ cython_debug/
 
 # Other
 /tools
-/scripts
+/tmp
 /wandb
