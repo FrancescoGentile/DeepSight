@@ -6,7 +6,7 @@ import abc
 
 from torch.optim import Optimizer
 
-from deepsight.training.engine import EpochPhaseTimestamp
+from deepsight.training import EpochPhaseTimestamp
 
 
 class LRScheduler(abc.ABC):

@@ -6,7 +6,7 @@ from typing import Any
 
 from torch.optim import Optimizer
 
-from deepsight.training.engine import EpochPhaseTimestamp
+from deepsight.training import EpochPhaseTimestamp
 from deepsight.typing import Configurable, StateDict, Stateful
 from deepsight.typing._types import Configs
 

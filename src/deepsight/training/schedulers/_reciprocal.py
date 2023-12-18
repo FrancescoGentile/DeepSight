@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from torch.optim import Optimizer
 
-from deepsight.training.engine import EpochPhaseTimestamp
+from deepsight.training import EpochPhaseTimestamp
 from deepsight.typing import Configurable
 from deepsight.typing._types import Configs
 

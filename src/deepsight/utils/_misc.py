@@ -4,20 +4,7 @@
 
 from collections.abc import Iterable
 
-import torch
-from torch import Tensor
-
 from deepsight.typing import Configs, Configurable
-
-
-def is_float_tensor(tensor: Tensor) -> bool:
-    """Check if a tensor is a float tensor."""
-    return torch.is_floating_point(tensor)
-
-
-def is_integer_tensor(tensor: Tensor) -> bool:
-    """Check if a tensor is an integer tensor."""
-    return tensor.dtype in [torch.int8, torch.int16, torch.int32, torch.int64]
 
 
 def to_2tuple[T](value: T | tuple[T, T]) -> tuple[T, T]:

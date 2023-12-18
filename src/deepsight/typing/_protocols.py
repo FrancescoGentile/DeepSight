@@ -14,11 +14,6 @@ from ._types import Configs, StateDict
 class Moveable(Protocol):
     """An interface for objects that can be moved to a device."""
 
-    @property
-    def device(self) -> torch.device:
-        """The device this object is on."""
-        ...
-
     def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         """Move this object to the given device.
 
