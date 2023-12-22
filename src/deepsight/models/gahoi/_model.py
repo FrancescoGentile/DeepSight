@@ -9,8 +9,7 @@ import torch
 import torch.nn.functional as F  # noqa
 from torch import nn
 
-from deepsight.models import Model as _Model
-from deepsight.models import vit
+from deepsight.models import Model, vit
 from deepsight.ops.vision import RoIAlign
 from deepsight.structures.geometric import BatchMode, Graph
 from deepsight.structures.vision import (
@@ -22,13 +21,13 @@ from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configs, Configurable, Tensor
 from deepsight.utils import Batch
 
-from ._config import Configs as ModelConfigs
+from ._args import Args
 from ._decoder import Decoder
 from ._structures import LayerOutput, Output
 from ._utils import get_interaction_mask
 
 
-class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
+class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
     """The Graph-based Approach to Human-Object Interaction (GAHOI) model."""
 
     # ----------------------------------------------------------------------- #
@@ -37,13 +36,13 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
 
     def __init__(
         self,
-        configs: ModelConfigs,
+        args: Args,
         obj_to_interactions: list[list[int]] | None = None,
     ) -> None:
         """Initialize the GAHOI model.
 
         Args:
-            configs: The configurations for the model.
+            args: The arguments for the GAHOI model.
             obj_to_interactions: The lists of interactions for each object class.
                 The number of lists must be equal to the number of entity classes.
                 Each list contains the indices of the interactions in which the
@@ -57,39 +56,41 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         """
         super().__init__()
 
-        self._config = configs
-        self.human_class_id = configs.human_class_id
-        self.allow_human_human = configs.allow_human_human
+        self._args = args
+        self.human_class_id = args.human_class_id
+        self.allow_human_human = args.allow_human_human
 
         # Parameters
         vit_configs = vit.Configs.from_variant(
-            configs.encoder_variant,
-            patch_size=configs.encoder_patch_size,
-            image_size=configs.encoder_image_size,
+            args.encoder_variant,
+            patch_size=args.encoder_patch_size,
+            image_size=args.encoder_image_size,
         )
-        vit_configs = replace(
-            vit_configs,
-            qkv_dropout=configs.qkv_dropout,
-            attn_dropout=configs.attn_dropout,
-            proj_dropout=configs.proj_dropout,
-            ffn_dropout=configs.ffn_dropout,
-            pos_embed_dropout=configs.patch_dropout,
-        )
+        if args.add_dropout_to_vit:
+            vit_configs = replace(
+                vit_configs,
+                qkv_dropout=args.qkv_dropout,
+                attn_dropout=args.attn_dropout,
+                proj_dropout=args.proj_dropout,
+                ffn_dropout=args.ffn_dropout,
+                pos_embed_dropout=args.patch_dropout,
+            )
+
         self.encoder = vit.Encoder(vit_configs)
 
-        if self.encoder.output_channels != configs.node_dim:
-            self.proj = nn.Conv2d(self.encoder.output_channels, configs.node_dim, 1)
+        if self.encoder.output_channels != args.node_dim:
+            self.proj = nn.Conv2d(self.encoder.output_channels, args.node_dim, 1)
         else:
             self.proj = nn.Identity()
 
         self.roi_align = RoIAlign(output_size=1, sampling_ratio=-1, aligned=True)
-        self.edge_proj = nn.Linear(36, configs.edge_dim)
-        self.decoder = Decoder(configs)
+        self.edge_proj = nn.Linear(36, args.edge_dim)
+        self.decoder = Decoder(args)
 
-        classifier_dim = 2 * configs.node_dim + configs.edge_dim
+        classifier_dim = 2 * args.node_dim + args.edge_dim
         self.suppress_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
-            nn.Dropout(configs.classifier_dropout),
+            nn.Dropout(args.classifier_dropout),
             nn.Linear(
                 in_features=classifier_dim,
                 out_features=1,
@@ -99,10 +100,10 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
 
         self.interaction_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
-            nn.Dropout(configs.classifier_dropout),
+            nn.Dropout(args.classifier_dropout),
             nn.Linear(
                 in_features=classifier_dim,
-                out_features=configs.num_interaction_classes,
+                out_features=args.num_interaction_classes,
                 bias=False,
             ),
         )
@@ -112,8 +113,8 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
             "oi_mask",
             get_interaction_mask(
                 obj_to_interactions,
-                configs.num_entity_classes,
-                configs.num_interaction_classes,
+                args.num_entity_classes,
+                args.num_interaction_classes,
             ),
         )
         self.oi_mask: torch.Tensor | None  # for type checking
@@ -123,7 +124,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
     # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
-        return self._config.__dict__.copy()
+        return self._args.__dict__.copy()
 
     def forward(
         self,

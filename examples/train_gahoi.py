@@ -160,7 +160,7 @@ class CooldownCallback[S, O, A, P](Callback[S, O, A, P]):
 
 def create_training_phase(
     dataset: HICODETDataset | H2ODataset,
-    model: gahoi.Model,
+    model: gahoi.GAHOI,
     criterion: gahoi.Criterion,
     batch_size: int,
     optimizer: torch.optim.Optimizer,
@@ -194,7 +194,7 @@ def create_training_phase(
 
 def create_cooldown_phase(
     dataset: HICODETDataset | H2ODataset,
-    model: gahoi.Model,
+    model: gahoi.GAHOI,
     criterion: gahoi.Criterion,
     batch_size: int,
     optimizer: torch.optim.Optimizer,
@@ -281,12 +281,12 @@ def main() -> None:
     t_dataset = H2ODataset("datasets/h2o", "train", transform=t_transform)
     e_dataset = H2ODataset("datasets/h2o", "test", transform=e_transform)
 
-    config = gahoi.Configs(
+    config = gahoi.Args(
         human_class_id=t_dataset.human_class_id,
         num_entity_classes=t_dataset.num_entity_classes,
         num_interaction_classes=t_dataset.num_interaction_classes,
         allow_human_human=True,
-        num_decoder_layers=1,
+        num_decoder_layers=3,
         patch_dropout=0.7,
         qkv_dropout=0.7,
         attn_dropout=0.7,
@@ -294,7 +294,7 @@ def main() -> None:
         ffn_dropout=0.7,
         classifier_dropout=0.7,
     )
-    model = gahoi.Model(
+    model = gahoi.GAHOI(
         config,
         t_dataset.get_object_valid_interactions(["train", "test"]),
     )
@@ -339,6 +339,7 @@ def main() -> None:
     )
 
     engine = Engine(
+        run_name="vit-freeze-decoder-3",
         model=model,
         phases=[
             train_phase,

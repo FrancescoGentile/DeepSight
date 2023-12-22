@@ -9,8 +9,8 @@ from deepsight.models import vit
 
 
 @dataclass(frozen=True)
-class Configs:
-    """Configuration for the GAHOI model."""
+class Args:
+    """Arguments for GAHOI."""
 
     human_class_id: int
     num_entity_classes: int
@@ -24,6 +24,8 @@ class Configs:
     edge_dim: int = 256
     cpb_hidden_dim: int = 256
     num_heads: int = 8
+    negative_slope: float = 0.2
+    add_dropout_to_vit: bool = True
     patch_dropout: float = 0.1
     qkv_dropout: float = 0.1
     attn_dropout: float = 0.1
