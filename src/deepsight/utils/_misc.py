@@ -27,6 +27,16 @@ def to_tuple[T](value: T | Iterable[T]) -> tuple[T, ...]:
         return (value,)
 
 
+def to_set[T](value: T | Iterable[T]) -> set[T]:
+    """Convert a value to a set."""
+    if isinstance(value, set):
+        return value
+    elif isinstance(value, Iterable):
+        return set(value)
+    else:
+        return {value}
+
+
 def full_class_name(obj: object) -> str:
     """Get the full class name of an object."""
     return f"{obj.__class__.__module__}.{obj.__class__.__name__}"

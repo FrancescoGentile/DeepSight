@@ -9,6 +9,7 @@ from ._misc import (
     full_class_name,
     get_configs,
     to_2tuple,
+    to_set,
     to_tuple,
 )
 from ._reproducibility import get_rng_state, seed_all, set_rng_state
@@ -25,6 +26,7 @@ __all__ = [
     "full_class_name",
     "get_configs",
     "to_2tuple",
+    "to_set",
     "to_tuple",
     # _reproducibility
     "get_rng_state",
