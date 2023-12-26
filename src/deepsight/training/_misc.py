@@ -95,8 +95,8 @@ class BatchLosses:
 @str_enum
 class Precision(enum.Enum):
     FP32 = "fp32"
-    AMP_FP16 = "amp-fp16"
-    AMP_BF16 = "amp-bf16"
+    AMP_FP16 = "amp_fp16"
+    AMP_BF16 = "amp_bf16"
 
     def is_mixed_precision(self) -> bool:
         """Return whether the precision is mixed."""

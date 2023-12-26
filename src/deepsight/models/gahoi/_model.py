@@ -131,14 +131,14 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
         images = BatchedImages.batch([sample.image.data for sample in samples])
         features = self.encoder(images)
         features = self.encoder.extract_feature_maps(images, [features])[0]
-        proj_features = self.proj(images.data)
-        images = features.replace(data=proj_features)
+        proj_features = self.proj(features.data)
+        features = features.replace(data=proj_features)
 
         entity_boxes = [
             sample.entity_boxes.resize(size).denormalize().to_xyxy()
-            for sample, size in zip(samples, images.image_sizes, strict=True)
+            for sample, size in zip(samples, features.image_sizes, strict=True)
         ]
-        node_features = self.roi_align(images, entity_boxes)
+        node_features = self.roi_align(features, entity_boxes)
         node_features = node_features.flatten(1)  # (N, C)
         node_features = node_features.split_with_sizes([
             len(box) for box in entity_boxes
@@ -152,7 +152,7 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
         ])
         edge_features = self.edge_proj(batched_graphs.edge_features())
         batched_graphs = batched_graphs.replace(edge_features=edge_features)
-        decoder_output = self.decoder(batched_graphs, boxes, images)
+        decoder_output = self.decoder(batched_graphs, boxes, features)
 
         entity_labels = torch.cat([sample.entity_labels for sample in samples])
         return self._create_output(decoder_output, entity_labels)

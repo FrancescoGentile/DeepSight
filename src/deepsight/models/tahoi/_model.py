@@ -101,17 +101,17 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         images = BatchedImages.batch([sample.image.data for sample in samples])
         features = self.encoder(images)
         features = self.encoder.extract_feature_maps(images, [features])[0]
-        proj_features = self.proj(images.data)
-        images = features.replace(data=proj_features)
+        proj_features = self.proj(features.data)
+        features = features.replace(data=proj_features)
 
-        ccc, entity_boxes = self._create_decoder_input(samples, images)
+        ccc, entity_boxes = self._create_decoder_input(samples, features)
 
         if annotations is not None:
             gt_clusters = GTClusters.from_annotations(annotations)
         else:
             gt_clusters = None
 
-        layer_outputs = self.decoder(ccc, entity_boxes, images, gt_clusters)
+        layer_outputs = self.decoder(ccc, entity_boxes, features, gt_clusters)
 
         output = self._create_output(
             layer_outputs,
