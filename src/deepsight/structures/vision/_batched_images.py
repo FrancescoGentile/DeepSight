@@ -121,6 +121,20 @@ class BatchedImages(Moveable):
 
         return cls(data, image_sizes=image_sizes, check_validity=False)
 
+    @classmethod
+    def from_sequences(
+        cls,
+        sequences: BatchedSequences,
+        image_sizes: tuple[tuple[int, int], ...],
+    ) -> Self:
+        """Convert a batch of sequences to a batch of images."""
+        images = [
+            seq.view(image_size[0], image_size[1], -1).permute(2, 0, 1)
+            for seq, image_size in zip(sequences.unbatch(), image_sizes, strict=True)
+        ]
+
+        return cls.batch(images)
+
     # ----------------------------------------------------------------------- #
     # Properties
     # ----------------------------------------------------------------------- #
@@ -191,11 +205,16 @@ class BatchedImages(Moveable):
 
     def to_sequences(self) -> BatchedSequences:
         """Convert the batched images to a batch of sequences."""
-        data = self._data.flatten(2).permute(0, 2, 1)
-        mask = self._mask.flatten(1)
-        sizes = tuple(s[0] * s[1] for s in self._image_sizes)
+        # We can't use the following code because the padding tokens in the batched
+        # sequences would no longer be at the end of the sequences, but rather
+        # scattered throughout the sequences.
+        # data = self._data.flatten(2).permute(0, 2, 1)
+        # mask = self._mask.flatten(1)
+        # sizes = tuple(s[0] * s[1] for s in self._image_sizes)
+        # return BatchedSequences(data, sizes, mask, check_validity=False)
 
-        return BatchedSequences(data, sizes, mask, check_validity=False)
+        flattened_images = [image.flatten(1).T for image in self.unbatch()]
+        return BatchedSequences.batch(flattened_images)
 
     def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         if self.device == torch.device(device):
@@ -258,11 +277,10 @@ def _compute_sizes_from_mask(
     """
     sizes: list[tuple[int, int]] = []
     for m in mask:
-        # TODO: check this code
-        h = m.shape[0] - m.sum(0).sum(0).item()
-        w = m.shape[1] - m.sum(0).sum(0).item()
+        h = int(m.shape[0] - m.sum(0).min().item())
+        w = int(m.shape[1] - m.sum(1).min().item())
 
-        sizes.append((h, w))  # type: ignore
+        sizes.append((h, w))
 
     return tuple(sizes)
 
