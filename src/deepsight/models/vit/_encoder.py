@@ -3,67 +3,78 @@
 ##
 
 import math
+from collections.abc import Iterable
 from typing import Literal, overload
 
 import torch
 import torch.nn.functional as F  # noqa: N812
 from torch import nn
-from torch.nn.utils.rnn import pad_sequence
 
 from deepsight import utils
 from deepsight.layers import LayerScale
-from deepsight.layers.vision import PatchEmbedding
+from deepsight.layers.vision import LearnedPositionalEmbedding, PatchEmbedding
 from deepsight.structures.vision import BatchedImages, BatchedSequences
 from deepsight.typing import Tensor
 
-from ._config import Configs
+from ._config import Config
 
 
 class Encoder(nn.Module):
-    """Encoder of the original ViT."""
+    """Vision Transformer Encoder."""
 
-    def __init__(self, configs: Configs) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
-        image_size = utils.to_2tuple(configs.image_size)
-        patch_size = utils.to_2tuple(configs.patch_size)
+        image_size = utils.to_2tuple(config.image_size)
+        patch_size = utils.to_2tuple(config.patch_size)
+
+        self.embed_dim = config.embed_dim
 
         self.num_h_patches = math.ceil(image_size[0] / patch_size[0])
         self.num_w_patches = math.ceil(image_size[1] / patch_size[1])
-        self.no_class_embedding = configs.no_class_embedding
-        self.embed_dim = configs.embed_dim
+        self.num_prefix_tokens = 1 if config.use_class_token else 0
+        self.num_prefix_tokens += config.num_register_tokens
+
+        self.use_prefix_embedding = config.use_prefix_embedding
 
         self.patch_embed = PatchEmbedding(
             patch_size=patch_size,
-            in_channels=configs.in_channels,
-            embed_dim=configs.embed_dim,
+            in_channels=config.in_channels,
+            embed_dim=config.embed_dim,
             layer_norm_eps=None,
-            bias=not configs.pre_normalize,
+            bias=not config.pre_normalize,
         )
 
-        if configs.use_class_token:
-            self.cls_token = nn.Parameter(torch.zeros(1, 1, configs.embed_dim))
+        if config.use_class_token:
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
         else:
             self.cls_token = None
 
-        num_patches = self.num_h_patches * self.num_w_patches
-        num_embeds = num_patches
-        if configs.use_class_token and not configs.no_class_embedding:
-            num_embeds += 1
+        if config.num_register_tokens > 0:
+            self.register_tokens = nn.Parameter(
+                torch.zeros(1, config.num_register_tokens, config.embed_dim)
+            )
+        else:
+            self.register_tokens = None
 
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_embeds, configs.embed_dim))
-        self.pos_dropout = nn.Dropout(configs.pos_embed_dropout)
+        self.pos_embed = LearnedPositionalEmbedding(
+            embed_dim=config.embed_dim,
+            num_patches=(self.num_h_patches, self.num_w_patches),
+            num_prefix_embedding=self.num_prefix_tokens
+            if config.use_prefix_embedding
+            else 0,
+            pos_dropout=config.pos_embed_dropout,
+        )
+
         self.pre_layernorm = (
-            nn.LayerNorm(configs.embed_dim, eps=configs.layer_norm_eps)
-            if configs.pre_normalize
+            nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+            if config.pre_normalize
             else nn.Identity()
         )
 
-        self.layers = nn.ModuleList([Layer(configs) for _ in range(configs.num_layers)])
+        self.layers = nn.ModuleList([Layer(config) for _ in range(config.num_layers)])
 
-        self.post_layernorm = nn.LayerNorm(
-            configs.embed_dim, eps=configs.layer_norm_eps
-        )
+        self.post_layernorm = nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -78,32 +89,138 @@ class Encoder(nn.Module):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
+    @overload
     def forward(
-        self, x: BatchedImages | Tensor[Literal["B C H W"], float]
-    ) -> BatchedImages | Tensor[Literal["B D h w"], float]:
+        self,
+        x: Tensor[Literal["B C H W"], float],
+        return_layers: int | Iterable[int],
+        apply_post_layernorm: bool,
+    ) -> list[Tensor[Literal["B L D"], float]]: ...
+
+    @overload
+    def forward(
+        self,
+        x: BatchedImages,
+        return_layers: int | Iterable[int],
+        apply_post_layernorm: bool,
+    ) -> list[BatchedSequences]: ...
+
+    def forward(
+        self,
+        x: BatchedImages | Tensor[Literal["B C H W"], float],
+        return_layers: int | Iterable[int] = -1,
+        apply_post_layernorm: bool = True,
+    ) -> list[BatchedSequences] | list[Tensor[Literal["B L D"], float]]:
+        """Forward pass through the encoder.
+
+        Args:
+            x: The input data.
+            return_layers: The indices of the layers to return.
+            apply_post_layernorm: Whether to apply post layer normalization. If multiple
+                layers are returned, this will be applied to each layer.
+        """
+        return_layers = utils.to_tuple(return_layers)
+        take_indices = {i if i >= 0 else len(self.layers) + i for i in return_layers}
+
         x = self.patch_embed(x)  # (B, D, h, w)
-        x_embed = self._add_pos_embeds(x)
+
+        prefix_tokens = []
+        if self.cls_token is not None:
+            prefix_tokens.append(self.cls_token)
+        if self.register_tokens is not None:
+            prefix_tokens.append(self.register_tokens)
+
+        x_embed = self.pos_embed(x, prefix_tokens)  # (B, (cls + reg) + hw, D)
         if isinstance(x_embed, BatchedSequences):
             out = x_embed.data
-            mask = x_embed.mask[:, None, None]  # (B, 1, 1, (1) + hw)
+            # The attention mask in BatchedSequences has True for the padding tokens
+            # and False for the valid tokens. The boolean attention mask used by
+            # `scaled_dot_product_attention` instead should be the opposite (True for
+            # elements that take part in the attention and False for elements that are
+            # masked out). Therefore, we need to invert the mask.
+            mask = ~x_embed.mask[:, None, None]
         else:
             out = x_embed
             mask = None
 
-        out: torch.Tensor = self.pre_layernorm(out)
-        for layer in self.layers:
-            out = layer(out, mask)
+        tmp: torch.Tensor = self.pre_layernorm(out)
 
-        out = self.post_layernorm(out)
+        outputs: list[torch.Tensor] = []
+        for i, layer in enumerate(self.layers):
+            tmp = layer(tmp, mask)
+            if i in take_indices:
+                outputs.append(tmp)
 
-        if self.cls_token is not None:
-            out = out[:, 1:]  # remove cls token
-        out = out.transpose(1, 2).reshape(*x.shape)  # (B, D, h, w)
+        if apply_post_layernorm:
+            outputs = [self.post_layernorm(out) for out in outputs]
 
-        if isinstance(x, BatchedImages):
-            return x.replace(data=out)
+        if isinstance(x_embed, BatchedSequences):
+            return [x_embed.replace(data=out) for out in outputs]
+        else:
+            return outputs
 
-        return out
+    @overload
+    def extract_feature_maps(
+        self,
+        inputs: Tensor[Literal["B C H W"], float],
+        layer_outputs: Iterable[Tensor[Literal["B L D"], float]],
+    ) -> list[Tensor[Literal["B D h w"], float]]: ...
+
+    @overload
+    def extract_feature_maps(
+        self,
+        inputs: BatchedImages,
+        layer_outputs: Iterable[BatchedSequences],
+    ) -> list[BatchedImages]: ...
+
+    def extract_feature_maps(
+        self,
+        inputs: BatchedImages | Tensor[Literal["B C H W"], float],
+        layer_outputs: Iterable[BatchedSequences]
+        | Iterable[Tensor[Literal["B L D"], float]],
+    ) -> list[BatchedImages] | list[Tensor[Literal["B D h w"], float]]:
+        """Extract the feature maps from the encoder.
+
+        The output of each encoder layer is a sequence of vectors corresponding to the
+        patches features and, possibly, the class and register tokens. This method
+        removes the class and register tokens and reshapes the output to a 4D tensor
+        with the same spatial proportions as the input image.
+
+        Args:
+            inputs: The original input data to the encoder.
+            layer_outputs: The outputs of the encoder layers.
+        """
+        if isinstance(inputs, BatchedImages):
+            image_sizes = tuple(
+                self.patch_embed.compute_output_shape(image_size)
+                for image_size in inputs.image_sizes
+            )
+
+            outputs = []
+            for layer_output in layer_outputs:
+                assert isinstance(layer_output, BatchedSequences)
+                sequences = layer_output.unbatch()
+                images = [
+                    seq[self.num_prefix_tokens :].T.view(-1, h, w)
+                    for seq, (h, w) in zip(sequences, image_sizes, strict=True)
+                ]
+                outputs.append(BatchedImages.batch(images))
+
+            return outputs
+        else:
+            output_size = self.patch_embed.compute_output_shape(inputs.shape[-2:])
+            h, w = output_size
+
+            outputs = []
+            for layer_output in layer_outputs:
+                assert isinstance(layer_output, torch.Tensor)
+                data = layer_output[:, self.num_prefix_tokens :]
+                data = data.view(-1, h, w, self.embed_dim)
+                data = data.permute(0, 3, 1, 2)
+
+                outputs.append(data)
+
+            return outputs
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
@@ -112,75 +229,19 @@ class Encoder(nn.Module):
     @overload
     def __call__(
         self, x: Tensor[Literal["B C H W"], float]
-    ) -> Tensor[Literal["B D h w"], float]: ...
+    ) -> Tensor[Literal["B L D"], float]: ...
 
     @overload
-    def __call__(self, x: BatchedImages) -> BatchedImages: ...
+    def __call__(self, x: BatchedImages) -> BatchedSequences: ...
 
     def __call__(
         self, x: BatchedImages | Tensor[Literal["B C H W"], float]
-    ) -> BatchedImages | Tensor[Literal["B D h w"], float]:
-        return super().__call__(x)
-
-    # ----------------------------------------------------------------------- #
-    # Private Methods
-    # ----------------------------------------------------------------------- #
-
-    def _add_pos_embeds(
-        self, x: Tensor[Literal["B D h w"], float] | BatchedImages
-    ) -> Tensor[Literal["B hw D"], float] | BatchedSequences:
-        if isinstance(x, torch.Tensor):
-            h, w = x.shape[-2:]
-            pos_embed = _resize_pos_embeds(
-                self.pos_embed,
-                (self.num_h_patches, self.num_w_patches),
-                (h, w),
-                num_prefix_tokens=int(self.cls_token is not None),
-            )
-            sequences = None
-            out = x.flatten(2).transpose(1, 2)  # (B, hw, D)
-        else:
-            pos_embeds = []
-            for h, w in x.image_sizes:
-                embeds = _resize_pos_embeds(
-                    self.pos_embed,
-                    (self.num_h_patches, self.num_w_patches),
-                    (h, w),
-                    num_prefix_tokens=int(self.cls_token is not None),
-                )
-                pos_embeds.append(embeds[0])
-
-            pos_embed = pad_sequence(pos_embeds, batch_first=True)
-
-            sequences = x.to_sequences()
-            out = sequences.data
-
-        to_cat = []
-        if self.cls_token is not None:
-            cls_token = self.cls_token.expand(out.shape[0], -1, -1)
-            to_cat.append(cls_token)
-
-        if self.no_class_embedding:
-            out = out + pos_embed
-            out = torch.cat(to_cat + [out], dim=1)
-        else:
-            out = torch.cat(to_cat + [out], dim=1)
-            out = out + pos_embed
-
-        out = self.pos_dropout(out)
-        if sequences is not None:
-            if self.cls_token is not None:
-                mask = sequences.mask  # (B, hw)
-                mask = torch.cat([torch.ones_like(mask[:, :1]), mask], dim=1)
-                out = BatchedSequences(out, mask=mask)
-            else:
-                out = sequences.replace(data=out)
-
-        return out
+    ) -> BatchedSequences | Tensor[Literal["B L D"], float]:
+        return super().__call__(x)[-1]
 
 
 class Layer(nn.Module):
-    def __init__(self, configs: Configs) -> None:
+    def __init__(self, configs: Config) -> None:
         super().__init__()
 
         # Self-Attention
@@ -231,7 +292,7 @@ class SelfAttention(nn.Module):
     # Constructor
     # ----------------------------------------------------------------------- #
 
-    def __init__(self, configs: Configs) -> None:
+    def __init__(self, configs: Config) -> None:
         super().__init__()
 
         self.num_heads = configs.num_heads
@@ -290,46 +351,3 @@ class SelfAttention(nn.Module):
         out = out.transpose(1, 2).reshape(B, N, D)
         out = self.proj(out)
         return self.proj_dropout(out)
-
-
-# --------------------------------------------------------------------------- #
-# Helper Functions
-# --------------------------------------------------------------------------- #
-
-
-def _resize_pos_embeds(
-    pos_embeds: torch.Tensor,
-    old_size: tuple[int, int],
-    new_size: tuple[int, int],
-    num_prefix_tokens: int = 1,
-    interpolation: Literal["bilinear", "bicubic"] = "bicubic",
-    antialias: bool = True,
-) -> torch.Tensor:
-    num_old_tokens = pos_embeds.shape[1]
-    num_new_tokens = (new_size[0] * new_size[1]) + num_prefix_tokens
-    if num_old_tokens == num_new_tokens:
-        return pos_embeds
-
-    if num_prefix_tokens > 0:
-        prefix = pos_embeds[:, :num_prefix_tokens]
-        pos_embeds = pos_embeds[:, num_prefix_tokens:]
-    else:
-        prefix = None
-
-    embed_dim = pos_embeds.shape[-1]
-    orig_dtype = pos_embeds.dtype
-    pos_embeds = pos_embeds.float()
-
-    pos_embeds = pos_embeds.reshape(1, old_size[0], old_size[1], embed_dim)
-    pos_embeds = pos_embeds.permute(0, 3, 1, 2)
-    pos_embeds = F.interpolate(
-        pos_embeds, size=new_size, mode=interpolation, antialias=antialias
-    )
-
-    pos_embeds = pos_embeds.permute(0, 2, 3, 1).reshape(1, -1, embed_dim)
-    pos_embeds = pos_embeds.to(orig_dtype)
-
-    if prefix is not None:
-        pos_embeds = torch.cat([prefix, pos_embeds], dim=1)
-
-    return pos_embeds

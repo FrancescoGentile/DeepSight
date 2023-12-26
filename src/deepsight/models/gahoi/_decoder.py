@@ -18,35 +18,37 @@ from deepsight.structures.vision import (
 )
 from deepsight.typing import Tensor
 
-from ._args import Args
+from ._config import Config
 
 
 class GraphAttention(nn.Module):
     """A Graph Attention Layer for graph-based DETR."""
 
-    def __init__(self, args: Args) -> None:
+    def __init__(self, config: Config) -> None:
         """Initialize a graph attention layer."""
         super().__init__()
 
-        self.num_heads = args.num_heads
-        self.head_dim = args.node_dim // args.num_heads
-        self.hidden_dim = args.node_dim
+        self.num_heads = config.num_heads
+        self.head_dim = config.node_dim // config.num_heads
+        self.hidden_dim = config.node_dim
 
-        self.ni_proj = nn.Linear(args.node_dim, self.hidden_dim * self.num_heads)
-        self.nj_proj = nn.Linear(args.node_dim, self.hidden_dim * self.num_heads)
-        self.e_proj = nn.Linear(args.edge_dim, self.hidden_dim * self.num_heads)
+        self.ni_proj = nn.Linear(config.node_dim, self.hidden_dim * self.num_heads)
+        self.nj_proj = nn.Linear(config.node_dim, self.hidden_dim * self.num_heads)
+        self.e_proj = nn.Linear(config.edge_dim, self.hidden_dim * self.num_heads)
 
-        self.leaky_relu = nn.LeakyReLU(args.negative_slope)
-        self.hidden_dropout = nn.Dropout(args.qkv_dropout)
+        self.leaky_relu = nn.LeakyReLU(config.negative_slope)
+        self.hidden_dropout = nn.Dropout(config.qkv_dropout)
 
         self.attn_proj = nn.Parameter(torch.randn(self.num_heads, self.hidden_dim))
-        self.attn_dropout = nn.Dropout(args.attn_dropout)
+        self.attn_dropout = nn.Dropout(config.attn_dropout)
 
-        self.message_proj = nn.Linear(args.node_dim + args.edge_dim, args.node_dim)
-        self.message_dropout = nn.Dropout(args.qkv_dropout)
+        self.message_proj = nn.Linear(
+            config.node_dim + config.edge_dim, config.node_dim
+        )
+        self.message_dropout = nn.Dropout(config.qkv_dropout)
 
-        self.out_proj = nn.Linear(args.node_dim, args.node_dim)
-        self.proj_dropout = nn.Dropout(args.proj_dropout)
+        self.out_proj = nn.Linear(config.node_dim, config.node_dim)
+        self.proj_dropout = nn.Dropout(config.proj_dropout)
 
     def forward(self, graphs: Graph) -> Graph:
         ni = graphs.node_features()[graphs.adjacency_matrix().indices()[0]]
@@ -109,26 +111,26 @@ class GraphAttention(nn.Module):
 class CrossAttention(nn.Module):
     """Cross-attention layer for graph-based DETR."""
 
-    def __init__(self, args: Args) -> None:
+    def __init__(self, config: Config) -> None:
         """Initialize a cross-attention layer."""
         super().__init__()
 
-        self.num_heads = args.num_heads
-        self.head_dim = args.node_dim // args.num_heads
-        self.attn_dropout = args.attn_dropout
+        self.num_heads = config.num_heads
+        self.head_dim = config.node_dim // config.num_heads
+        self.attn_dropout = config.attn_dropout
 
-        self.q_proj = nn.Linear(args.node_dim, args.node_dim)
-        self.kv_proj = nn.Linear(args.node_dim, args.node_dim * 2)
-        self.qkv_dropout = nn.Dropout(args.qkv_dropout)
+        self.q_proj = nn.Linear(config.node_dim, config.node_dim)
+        self.kv_proj = nn.Linear(config.node_dim, config.node_dim * 2)
+        self.qkv_dropout = nn.Dropout(config.qkv_dropout)
 
         self.cpb_mlp = nn.Sequential(
-            nn.Linear(2, args.cpb_hidden_dim, bias=False),
+            nn.Linear(2, config.cpb_hidden_dim, bias=False),
             nn.ReLU(),
-            nn.Linear(args.cpb_hidden_dim, args.num_heads, bias=False),
+            nn.Linear(config.cpb_hidden_dim, config.num_heads, bias=False),
         )
 
-        self.out_proj = nn.Linear(args.node_dim, args.node_dim)
-        self.proj_dropout = nn.Dropout(args.proj_dropout)
+        self.out_proj = nn.Linear(config.node_dim, config.node_dim)
+        self.proj_dropout = nn.Dropout(config.proj_dropout)
 
     def forward(
         self,
@@ -192,23 +194,23 @@ class CrossAttention(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, args: Args) -> None:
+    def __init__(self, config: Config) -> None:
         """Initialize a decoder layer."""
         super().__init__()
 
-        self.gat_layernorm = nn.LayerNorm(args.node_dim)
-        self.gat = GraphAttention(args)
+        self.gat_layernorm = nn.LayerNorm(config.node_dim)
+        self.gat = GraphAttention(config)
 
-        self.ca_layernorm = nn.LayerNorm(args.node_dim)
-        self.cross_attn = CrossAttention(args)
+        self.ca_layernorm = nn.LayerNorm(config.node_dim)
+        self.cross_attn = CrossAttention(config)
 
-        self.ffn_layernorm = nn.LayerNorm(args.node_dim)
+        self.ffn_layernorm = nn.LayerNorm(config.node_dim)
         self.ffn = nn.Sequential(
-            nn.Linear(args.node_dim, args.node_dim * 4),
+            nn.Linear(config.node_dim, config.node_dim * 4),
             nn.GELU(),
-            nn.Dropout(args.ffn_dropout),
-            nn.Linear(args.node_dim * 4, args.node_dim),
-            nn.Dropout(args.ffn_dropout),
+            nn.Dropout(config.ffn_dropout),
+            nn.Linear(config.node_dim * 4, config.node_dim),
+            nn.Dropout(config.ffn_dropout),
         )
 
     def forward(
@@ -245,11 +247,11 @@ class DecoderLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, args: Args) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
 
         self.layers = nn.ModuleList([
-            DecoderLayer(args) for _ in range(args.num_decoder_layers)
+            DecoderLayer(config) for _ in range(config.num_decoder_layers)
         ])
 
     def forward(

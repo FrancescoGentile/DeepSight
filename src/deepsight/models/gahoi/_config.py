@@ -3,22 +3,19 @@
 ##
 
 from dataclasses import dataclass
-from typing import Literal
 
 from deepsight.models import vit
 
 
 @dataclass(frozen=True)
-class Args:
-    """Arguments for GAHOI."""
+class Config:
+    """onfiguration for the GAHOI model."""
 
     human_class_id: int
     num_entity_classes: int
     num_interaction_classes: int
     allow_human_human: bool
-    encoder_variant: vit.Variant = vit.Variant.BASE
-    encoder_patch_size: Literal[16, 32] = 32
-    encoder_image_size: Literal[224, 384] = 384
+    encoder_variant: vit.Variant = vit.Variant.OG_BASE_PATCH32_IMG384
     num_decoder_layers: int = 6
     node_dim: int = 256
     edge_dim: int = 256

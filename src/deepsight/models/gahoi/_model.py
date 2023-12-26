@@ -21,7 +21,7 @@ from deepsight.tasks.hoic import Annotations, Predictions, Sample
 from deepsight.typing import Configs, Configurable, Tensor
 from deepsight.utils import Batch
 
-from ._args import Args
+from ._config import Config
 from ._decoder import Decoder
 from ._structures import LayerOutput, Output
 from ._utils import get_interaction_mask
@@ -36,13 +36,13 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
 
     def __init__(
         self,
-        args: Args,
+        config: Config,
         obj_to_interactions: list[list[int]] | None = None,
     ) -> None:
         """Initialize the GAHOI model.
 
         Args:
-            args: The arguments for the GAHOI model.
+            config: The configuration for the GAHOI model.
             obj_to_interactions: The lists of interactions for each object class.
                 The number of lists must be equal to the number of entity classes.
                 Each list contains the indices of the interactions in which the
@@ -56,41 +56,37 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
         """
         super().__init__()
 
-        self._args = args
-        self.human_class_id = args.human_class_id
-        self.allow_human_human = args.allow_human_human
+        self._config = config
+        self.human_class_id = config.human_class_id
+        self.allow_human_human = config.allow_human_human
 
         # Parameters
-        vit_configs = vit.Configs.from_variant(
-            args.encoder_variant,
-            patch_size=args.encoder_patch_size,
-            image_size=args.encoder_image_size,
-        )
-        if args.add_dropout_to_vit:
+        vit_configs = vit.Config.from_variant(config.encoder_variant)
+        if config.add_dropout_to_vit:
             vit_configs = replace(
                 vit_configs,
-                qkv_dropout=args.qkv_dropout,
-                attn_dropout=args.attn_dropout,
-                proj_dropout=args.proj_dropout,
-                ffn_dropout=args.ffn_dropout,
-                pos_embed_dropout=args.patch_dropout,
+                qkv_dropout=config.qkv_dropout,
+                attn_dropout=config.attn_dropout,
+                proj_dropout=config.proj_dropout,
+                ffn_dropout=config.ffn_dropout,
+                pos_embed_dropout=config.patch_dropout,
             )
 
         self.encoder = vit.Encoder(vit_configs)
 
-        if self.encoder.output_channels != args.node_dim:
-            self.proj = nn.Conv2d(self.encoder.output_channels, args.node_dim, 1)
+        if self.encoder.output_channels != config.node_dim:
+            self.proj = nn.Conv2d(self.encoder.output_channels, config.node_dim, 1)
         else:
             self.proj = nn.Identity()
 
         self.roi_align = RoIAlign(output_size=1, sampling_ratio=-1, aligned=True)
-        self.edge_proj = nn.Linear(36, args.edge_dim)
-        self.decoder = Decoder(args)
+        self.edge_proj = nn.Linear(36, config.edge_dim)
+        self.decoder = Decoder(config)
 
-        classifier_dim = 2 * args.node_dim + args.edge_dim
+        classifier_dim = 2 * config.node_dim + config.edge_dim
         self.suppress_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
-            nn.Dropout(args.classifier_dropout),
+            nn.Dropout(config.classifier_dropout),
             nn.Linear(
                 in_features=classifier_dim,
                 out_features=1,
@@ -100,10 +96,10 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
 
         self.interaction_classifier = nn.Sequential(
             nn.LayerNorm(classifier_dim),
-            nn.Dropout(args.classifier_dropout),
+            nn.Dropout(config.classifier_dropout),
             nn.Linear(
                 in_features=classifier_dim,
-                out_features=args.num_interaction_classes,
+                out_features=config.num_interaction_classes,
                 bias=False,
             ),
         )
@@ -113,8 +109,8 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
             "oi_mask",
             get_interaction_mask(
                 obj_to_interactions,
-                args.num_entity_classes,
-                args.num_interaction_classes,
+                config.num_entity_classes,
+                config.num_interaction_classes,
             ),
         )
         self.oi_mask: torch.Tensor | None  # for type checking
@@ -124,7 +120,7 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
     # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> Configs:
-        return self._args.__dict__.copy()
+        return self._config.__dict__.copy()
 
     def forward(
         self,
@@ -133,9 +129,10 @@ class GAHOI(Model[Sample, Output, Annotations, Predictions], Configurable):
     ) -> Output:
         # Encoder
         images = BatchedImages.batch([sample.image.data for sample in samples])
-        images = self.encoder(images)
-        features = self.proj(images.data)
-        images = images.replace(data=features)
+        features = self.encoder(images)
+        features = self.encoder.extract_feature_maps(images, [features])[0]
+        proj_features = self.proj(images.data)
+        images = features.replace(data=proj_features)
 
         entity_boxes = [
             sample.entity_boxes.resize(size).denormalize().to_xyxy()

@@ -281,7 +281,7 @@ def main() -> None:
     t_dataset = H2ODataset("datasets/h2o", "train", transform=t_transform)
     e_dataset = H2ODataset("datasets/h2o", "test", transform=e_transform)
 
-    config = gahoi.Args(
+    config = gahoi.Config(
         human_class_id=t_dataset.human_class_id,
         num_entity_classes=t_dataset.num_entity_classes,
         num_interaction_classes=t_dataset.num_interaction_classes,
@@ -298,7 +298,7 @@ def main() -> None:
         config,
         t_dataset.get_object_valid_interactions(["train", "test"]),
     )
-    model.encoder.load_state_dict(torch.load("weights/vit_base_patch32_384.pt"))
+    model.encoder.load_state_dict(torch.load("weights/vit/og_base_patch32_img384.pt"))
     model.encoder.requires_grad_(False)
 
     criterion = gahoi.Criterion(

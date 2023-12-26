@@ -33,9 +33,7 @@ class Config:
 
     human_class_id: int
     num_interaction_classes: int
-    encoder_variant: vit.Variant = vit.Variant.BASE
-    encoder_patch_size: Literal[16, 32] = 16
-    encoder_image_size: Literal[224, 384] = 384
+    encoder_variant: vit.Variant = vit.Variant.OG_BASE_PATCH32_IMG384
     embed_dim: int = 256
     cpb_hidden_dim: int = 256
     num_heads: int = 8
@@ -58,11 +56,7 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         self._config = config
         self.human_class_id = config.human_class_id
 
-        vit_configs = vit.Configs.from_variant(
-            config.encoder_variant,
-            config.encoder_patch_size,
-            config.encoder_image_size,
-        )
+        vit_configs = vit.Config.from_variant(config.encoder_variant)
         self.encoder = vit.Encoder(vit_configs)
 
         if self.encoder.output_channels != config.embed_dim:
@@ -105,10 +99,10 @@ class Model(_Model[Sample, Output, Annotations, Predictions], Configurable):
         annotations: Batch[Annotations] | None,
     ) -> Output:
         images = BatchedImages.batch([sample.image.data for sample in samples])
-        images = self.encoder(images)
-        features = self.proj(images.data)
-
-        images = images.replace(data=features)
+        features = self.encoder(images)
+        features = self.encoder.extract_feature_maps(images, [features])[0]
+        proj_features = self.proj(images.data)
+        images = features.replace(data=proj_features)
 
         ccc, entity_boxes = self._create_decoder_input(samples, images)
 

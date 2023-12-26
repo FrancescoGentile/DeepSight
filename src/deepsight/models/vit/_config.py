@@ -4,7 +4,7 @@
 
 import enum
 from dataclasses import dataclass
-from typing import Literal, Self
+from typing import Self
 
 from deepsight.typing import str_enum
 
@@ -13,18 +13,15 @@ from deepsight.typing import str_enum
 class Variant(enum.Enum):
     """Predefined ViT variants."""
 
-    TINY = "tiny"
-    SMALL = "small"
-    BASE = "base"
-    LARGE = "large"
-    HUGE = "huge"
-    GIANT = "giant"
-    GIGANTIC = "gigantic"
+    OG_BASE_PATCH32_IMG224 = "og_base_patch32_img224"
+    OG_BASE_PATCH32_IMG384 = "og_base_patch32_img384"
+    DINOV2_BASE_PATCH14_IMG518 = "dinov2_base_patch14_img518"
+    DINOV2_BASE_PATCH14_REG4_IMG518 = "dinov2_base_patch14_reg4_img518"
 
 
 @dataclass(frozen=True)
-class Configs:
-    """The ViT configs."""
+class Config:
+    """The Vision Transformer (ViT) configuration."""
 
     image_size: int | tuple[int, int]
     patch_size: int | tuple[int, int]
@@ -38,7 +35,8 @@ class Configs:
     layer_scale_init_value: float | None = None
     layer_norm_eps: float = 1e-6
     use_class_token: bool = True
-    no_class_embedding: bool = False
+    num_register_tokens: int = 0
+    use_prefix_embedding: bool = True
     pre_normalize: bool = False
     pos_embed_dropout: float = 0.0
     qkv_dropout: float = 0.0
@@ -53,61 +51,49 @@ class Configs:
                 f"num_heads ({self.num_heads})."
             )
 
+        if self.num_register_tokens < 0:
+            raise ValueError(
+                f"num_register_tokens ({self.num_register_tokens}) must be "
+                f"non-negative."
+            )
+
     @classmethod
-    def from_variant(
-        cls,
-        variant: Variant,
-        patch_size: Literal[8, 14, 16, 32],
-        image_size: Literal[224, 384],
-    ) -> Self:
-        """Constructs a ViT config from a predefined variant.
-
-        Args:
-            variant: The predefined variant.
-            patch_size: The patch size.
-            image_size: The image size.
-
-        Returns:
-            The ViT config.
-        """
-        ffn_hidden_ratio = 4
+    def from_variant(cls, variant: Variant) -> Self:
+        """Constructs a ViT config from a predefined variant."""
         match variant:
-            case Variant.TINY:
-                embed_dim = 192
-                num_layers = 12
-                num_heads = 3
-            case Variant.SMALL:
-                embed_dim = 384
-                num_layers = 12
-                num_heads = 6
-            case Variant.BASE:
-                embed_dim = 768
-                num_layers = 12
-                num_heads = 12
-            case Variant.LARGE:
-                embed_dim = 1024
-                num_layers = 24
-                num_heads = 16
-            case Variant.HUGE:
-                embed_dim = 1280
-                num_layers = 32
-                num_heads = 16
-            case Variant.GIANT:
-                embed_dim = 1408
-                num_layers = 40
-                num_heads = 16
-                ffn_hidden_ratio = 48 / 11
-            case Variant.GIGANTIC:
-                embed_dim = 1664
-                num_layers = 48
-                num_heads = 16
-                ffn_hidden_ratio = 64 / 13
-
-        return cls(
-            image_size=image_size,
-            patch_size=patch_size,
-            embed_dim=embed_dim,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            ffn_hidden_ratio=ffn_hidden_ratio,
-        )
+            case Variant.OG_BASE_PATCH32_IMG224:
+                return cls(
+                    patch_size=32,
+                    image_size=224,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                )
+            case Variant.OG_BASE_PATCH32_IMG384:
+                return cls(
+                    patch_size=32,
+                    image_size=384,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                )
+            case Variant.DINOV2_BASE_PATCH14_IMG518:
+                return cls(
+                    patch_size=14,
+                    image_size=518,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                    layer_scale_init_value=1e-5,
+                )
+            case Variant.DINOV2_BASE_PATCH14_REG4_IMG518:
+                return cls(
+                    patch_size=14,
+                    image_size=518,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                    num_register_tokens=4,
+                    layer_scale_init_value=1e-5,
+                    use_prefix_embedding=False,
+                )
