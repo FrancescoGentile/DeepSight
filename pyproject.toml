@@ -6,11 +6,8 @@ authors = [
     {name = "Francesco Gentile", email = "francesco.gentile@studenti.unitn.it"},
 ]
 dependencies = [
-    "torch>=2.2.0",
-    "torchmetrics>=1.2",
+    "torch<2.3,>2.1",
     "numpy>=1.23",
-    "scipy>=1.9",
-    "scikit-learn>=1.1",
     "coolname>=2.2.0",
     "Pillow>=10.0",
     "wandb>=0.16",
@@ -20,27 +17,25 @@ requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
-[project.optional-dependencies]
-lint = [
-    "ruff>=0.1.8",
-    "pyright>=1.1.341",
-]
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
-
 
 [tool.pdm]
 package-type = "library"
 allow_prereleases = true
 
-
 [[tool.pdm.source]]
 url = "https://download.pytorch.org/whl/nightly/cu121"
 verify_ssl = true
 name = "internal"
+include_packages = ["torch"]
 
 [tool.pdm.dev-dependencies]
+lint = [
+    "ruff>=0.1.8",
+    "pyright>=1.1.341",
+]
 docs = [
     "mkdocs>=1.5.3",
     "mkdocstrings[python]>=0.24.0",
