@@ -74,7 +74,11 @@ class Encoder(nn.Module):
 
         self.layers = nn.ModuleList([Layer(config) for _ in range(config.num_layers)])
 
-        self.post_layernorm = nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+        self.post_layernorm = (
+            nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+            if config.post_normalize
+            else nn.Identity()
+        )
 
     # ----------------------------------------------------------------------- #
     # Properties

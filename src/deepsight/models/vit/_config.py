@@ -17,6 +17,9 @@ class Variant(enum.Enum):
     OG_BASE_PATCH32_IMG384 = "og_base_patch32_img384"
     DINOV2_BASE_PATCH14_IMG518 = "dinov2_base_patch14_img518"
     DINOV2_BASE_PATCH14_REG4_IMG518 = "dinov2_base_patch14_reg4_img518"
+    CLIP_BASE_PATCH32_IMG224 = "clip_base_patch32_img224"
+    CLIP_BASE_PATCH32_IMG256 = "clip_base_patch32_img256"
+    CLIP_BASE_PATCH32_IMG384 = "clip_base_patch32_img384"
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,7 @@ class Config:
     num_register_tokens: int = 0
     use_prefix_embedding: bool = True
     pre_normalize: bool = False
+    post_normalize: bool = True
     pos_embed_dropout: float = 0.0
     qkv_dropout: float = 0.0
     attn_dropout: float = 0.0
@@ -96,4 +100,31 @@ class Config:
                     num_register_tokens=4,
                     layer_scale_init_value=1e-5,
                     use_prefix_embedding=False,
+                )
+            case Variant.CLIP_BASE_PATCH32_IMG224:
+                return cls(
+                    patch_size=32,
+                    image_size=224,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                    pre_normalize=True,
+                )
+            case Variant.CLIP_BASE_PATCH32_IMG256:
+                return cls(
+                    patch_size=32,
+                    image_size=256,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                    pre_normalize=True,
+                )
+            case Variant.CLIP_BASE_PATCH32_IMG384:
+                return cls(
+                    patch_size=32,
+                    image_size=384,
+                    embed_dim=768,
+                    num_layers=12,
+                    num_heads=12,
+                    pre_normalize=True,
                 )
