@@ -2,7 +2,6 @@
 ##
 ##
 
-from ._batch import Batch
 from ._enums import InterpolationMode
 from ._logging import get_library_logger
 from ._misc import (
@@ -16,8 +15,6 @@ from ._reproducibility import get_rng_state, seed_all, set_rng_state
 from ._torch import is_float_tensor, is_integer_tensor
 
 __all__ = [
-    # _batch
-    "Batch",
     # _enums
     "InterpolationMode",
     # _logging

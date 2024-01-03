@@ -5,8 +5,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from deepsight.data import Batch
 from deepsight.typing import Losses
-from deepsight.utils import Batch
 
 
 @dataclass(frozen=True)

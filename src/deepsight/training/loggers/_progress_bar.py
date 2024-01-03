@@ -4,9 +4,9 @@
 
 from tqdm import tqdm
 
+from deepsight.data import Batch
 from deepsight.training import State
 from deepsight.training.callbacks import Callback
-from deepsight.utils import Batch
 
 
 class ProgressBarLogger[S, O, A, P](Callback[S, O, A, P]):

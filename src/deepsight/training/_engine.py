@@ -15,9 +15,9 @@ from torch.amp.autocast_mode import autocast
 from torch.cuda.amp import GradScaler
 
 from deepsight import utils
+from deepsight.data import Batch
 from deepsight.models import Model
 from deepsight.typing import Detachable
-from deepsight.utils import Batch
 
 from ._misc import BatchLosses, ClipGradNorm, ClipGradValue, Precision
 from ._phase import EpochPhase, EvaluationPhase, TrainingPhase

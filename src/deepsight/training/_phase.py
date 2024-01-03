@@ -11,11 +11,11 @@ import torch
 from torch.optim import Optimizer
 
 from deepsight import utils
+from deepsight.data import DataLoader
+from deepsight.metrics import Evaluator
 from deepsight.models import Criterion
-from deepsight.tasks import Evaluator
 from deepsight.typing import Configs, Configurable, Moveable, StateDict, Stateful
 
-from ._dataloader import DataLoader
 from ._misc import ClipGradNorm, ClipGradValue
 
 if TYPE_CHECKING:

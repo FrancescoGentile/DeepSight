@@ -6,8 +6,8 @@ import enum
 from dataclasses import dataclass
 from typing import Protocol
 
+from deepsight.data import Batch
 from deepsight.typing import Number, str_enum
-from deepsight.utils import Batch
 
 
 @dataclass(frozen=True)

@@ -6,8 +6,8 @@ import abc
 
 from torch import nn
 
+from deepsight.data import Batch
 from deepsight.typing import Moveable, Stateful
-from deepsight.utils import Batch
 
 
 class Model[S, O, A, P](nn.Module, Moveable, Stateful, abc.ABC):
