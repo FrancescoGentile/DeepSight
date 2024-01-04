@@ -38,17 +38,24 @@ class ReciprocalLR(LRScheduler, Configurable):
     """
 
     def __init__(
-        self, optimizer: Optimizer, max_lr: float | Sequence[float], warmup_steps: int
+        self,
+        optimizer: Optimizer,
+        max_lr: float | Sequence[float] | None = None,
+        warmup_steps: int = 0,
     ) -> None:
         """Initialize the scheduler.
 
         Args:
             optimizer : The wrapped optimizer.
             max_lr : The maximum learning rate. If a list is provided, it must have the
-                same length as the number of parameter groups in the optimizer.
+                same length as the number of parameter groups in the optimizer. If None,
+                the current learning rate of each parameter group is set as the maximum
+                learning rate.
             warmup_steps: The number of warmup steps. If 0, no warmup is performed.
         """
-        if isinstance(max_lr, float | int):
+        if max_lr is None:
+            max_lr = [float(group["lr"]) for group in optimizer.param_groups]
+        elif isinstance(max_lr, float | int):
             max_lr = [float(max_lr)] * len(optimizer.param_groups)
         elif len(max_lr) != len(optimizer.param_groups):
             raise ValueError(
