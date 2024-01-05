@@ -168,16 +168,26 @@ class LearnedPositionalEmbedding(nn.Module):
             pos_embeds = self._resize((h, w))
             out = x.flatten(2).transpose(1, 2)  # (B, hw, D)
         else:
+            pos_embeds_cache: dict[tuple[int, int], torch.Tensor] = {}
             pos_embeds_list = []
             for h, w in x.image_sizes:
-                embeds = self._resize((h, w))
-                pos_embeds_list.append(embeds[0])
+                if (h, w) not in pos_embeds_cache:
+                    pos_embeds_cache[(h, w)] = self._resize((h, w))
 
-            pos_embeds = pad_sequence(pos_embeds_list, batch_first=True)
-            out = pad_sequence(
-                [image.data.flatten(1).T for image in x],
-                batch_first=True,
-            )
+                pos_embeds_list.append(pos_embeds_cache[(h, w)])
+
+            if len(pos_embeds_cache) > 1:
+                pos_embeds = pad_sequence(
+                    [embed[0] for embed in pos_embeds_list], batch_first=True
+                )
+                out = pad_sequence(
+                    [image.data.flatten(1).T for image in x],
+                    batch_first=True,
+                )
+            else:
+                # all the images have the same size, so we can avoid padding
+                pos_embeds = pos_embeds_list[0]
+                out = x.data.flatten(2).transpose(1, 2)
 
         match prefix_tokens:
             case None:
@@ -240,9 +250,7 @@ class LearnedPositionalEmbedding(nn.Module):
     # ----------------------------------------------------------------------- #
 
     def _resize(self, new_size: tuple[int, int]) -> Tensor[Literal["1 L D"], float]:
-        num_old_tokens = self.embeddings.shape[1]
-        num_new_tokens = (new_size[0] * new_size[1]) + self.num_prefix_embedding
-        if num_old_tokens == num_new_tokens:
+        if new_size == (self.num_h_patches, self.num_w_patches):
             return self.embeddings
 
         if self.num_prefix_embedding > 0:
