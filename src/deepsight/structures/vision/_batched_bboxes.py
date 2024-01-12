@@ -176,6 +176,8 @@ class BatchedBoundingBoxes:
             return self
 
         image_sizes = torch.tensor(self._image_sizes, device=self._coordinates.device)
+        # swap width and height
+        image_sizes = image_sizes.flip(-1)  # (B, 2)
         image_sizes = image_sizes[:, None]  # (B, 1, 2)
         norm_factor = image_sizes.repeat(1, 1, 2)  # (B, 1, 4)
 
@@ -200,6 +202,8 @@ class BatchedBoundingBoxes:
             return self
 
         image_sizes = torch.tensor(self._image_sizes, device=self._coordinates.device)
+        # swap width and height
+        image_sizes = image_sizes.flip(-1)  # (B, 2)
         image_sizes = image_sizes[:, None]  # (B, 1, 2)
         norm_factor = image_sizes.repeat(1, 1, 2)  # (B, 1, 4)
 
