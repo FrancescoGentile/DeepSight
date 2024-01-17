@@ -2,11 +2,13 @@
 ##
 ##
 
+import math
 from collections.abc import Sequence
 from typing import Literal, Self
 
 import torch
 
+from deepsight import utils
 from deepsight.typing import Moveable, Number, Tensor
 
 from ._batched_sequences import BatchedSequences
@@ -50,55 +52,41 @@ class BatchedImages(Moveable):
                 valid pixels. If not provided, the mask is computed from
                 the image sizes.
             check_validity: Whether to check the validity of the inputs.
+                Checking the validity may be expensive, so it can be
+                disabled if the inputs are known to be valid.
 
         Raises:
             ValueError: raised under the following conditions:
                 - If `image_sizes` and `mask` are provided and are incompatible.
                 - If the `data` and `mask` (thus `image_sizes`) are incompatible.
         """
-        match image_sizes, mask:
-            case None, None:
-                image_sizes = tuple((data.shape[2], data.shape[3]) for _ in data)
-                mask = torch.zeros(
-                    (len(data), data.shape[2], data.shape[3]),
-                    dtype=torch.bool,
-                    device=data.device,
-                )
-                check_validity = False
-            case None, _:
-                image_sizes = _compute_sizes_from_mask(mask)  # type: ignore
-            case _, None:
-                mask = _compute_mask_from_sizes(
-                    image_sizes, data.shape[2], data.shape[3], data.device
-                )
-            case _, _:
-                if check_validity:
-                    mask_image_sizes = _compute_sizes_from_mask(mask)
-                    if image_sizes != mask_image_sizes:
-                        raise ValueError("The image_sizes and mask are incompatible.")
+        if image_sizes is None and mask is None:
+            image_sizes = tuple((data.shape[2], data.shape[3]) for _ in data)
 
         if check_validity:
-            if mask.device != data.device:  # type: ignore
-                raise ValueError("The data and mask must be on the same device.")
-            if mask.dtype != torch.bool:  # type: ignore
-                raise ValueError("The mask must be of dtype bool.")
-            _check_data_mask(data, mask)  # type: ignore
+            _check_mask_sizes(data, mask, image_sizes)
 
         self._data = data
         self._image_sizes = image_sizes
-        self._mask: Tensor = mask  # type: ignore
+        self._mask = mask
 
     @classmethod
     def batch(
         cls,
         images: Sequence[Tensor[Literal["C H W"], Number]],
         padding_value: float = 0,
+        size_divisible_by: int | tuple[int, int] | None = None,
     ) -> Self:
         """Batch a list of images into a single tensor.
 
         Args:
             images: The images to batch.
-            padding_value: The value to pad the images with. Defaults to 0.
+            padding_value: The value to pad the images with.
+            size_divisible_by: The height and width of the images will be
+                further padded to be divisible by this value. If a single
+                value is provided, it is used for both the height and width.
+                If `None`, the images are padded to the largest width and
+                height in the batch.
 
         Returns:
             The batched images.
@@ -108,6 +96,11 @@ class BatchedImages(Moveable):
         image_sizes = tuple((img.size(1), img.size(2)) for img in images)
         max_height = max(s[0] for s in image_sizes)
         max_width = max(s[1] for s in image_sizes)
+
+        if size_divisible_by is not None:
+            stride_h, stride_w = utils.to_2tuple(size_divisible_by)
+            max_height = math.ceil(max_height / stride_h) * stride_h
+            max_width = math.ceil(max_width / stride_w) * stride_w
 
         data = torch.full(
             (len(images), images[0].shape[0], max_height, max_width),
@@ -152,6 +145,10 @@ class BatchedImages(Moveable):
     @property
     def image_sizes(self) -> tuple[tuple[int, int], ...]:
         """The sizes of the images in the batch before padding."""
+        if self._image_sizes is None:
+            assert self._mask is not None
+            self._image_sizes = _compute_sizes_from_mask(self._mask)
+
         return self._image_sizes
 
     @property
@@ -163,6 +160,15 @@ class BatchedImages(Moveable):
         `W` is the maximum width of the images in the batch. The entries of the
         mask are `True` for padded pixels and `False` for valid pixels.
         """
+        if self._mask is None:
+            assert self._image_sizes is not None
+            self._mask = _compute_mask_from_sizes(
+                self._image_sizes,
+                max_height=self._data.shape[2],
+                max_width=self._data.shape[3],
+                device=self._data.device,
+            )
+
         return self._mask
 
     @property
@@ -187,7 +193,7 @@ class BatchedImages(Moveable):
     def unbatch(self) -> tuple[Tensor[Literal["C H W"], Number], ...]:
         """Unbatch the images into a list of tensors."""
         return tuple(
-            self._data[i, :, :h, :w] for i, (h, w) in enumerate(self._image_sizes)
+            self._data[i, :, :h, :w] for i, (h, w) in enumerate(self.image_sizes)
         )
 
     def replace(self, data: Tensor[Literal["B C H W"], Number]) -> Self:
@@ -197,10 +203,16 @@ class BatchedImages(Moveable):
             ValueError: If the shape of the new data tensor is incompatible
                 with the mask.
         """
-        _check_data_mask(data, self._mask)
+        if self.data.shape[0] != data.shape[0]:
+            raise ValueError("The batch size cannot be changed.")
+        if self.data.shape[2:] != data.shape[2:]:
+            raise ValueError("The spatial dimensions cannot be changed.")
 
         return self.__class__(
-            data, image_sizes=self._image_sizes, mask=self._mask, check_validity=False
+            data,
+            image_sizes=self._image_sizes,
+            mask=self._mask,
+            check_validity=False,
         )
 
     def to_sequences(self) -> BatchedSequences:
@@ -223,7 +235,9 @@ class BatchedImages(Moveable):
         return self.__class__(
             self._data.to(device, non_blocking=non_blocking),
             image_sizes=self._image_sizes,
-            mask=self._mask.to(device, non_blocking=non_blocking),
+            mask=self._mask.to(device, non_blocking=non_blocking)
+            if self._mask is not None
+            else None,
             check_validity=False,
         )
 
@@ -237,7 +251,7 @@ class BatchedImages(Moveable):
 
     def __getitem__(self, index: int) -> Tensor[Literal["C H W"], Number]:
         """Get the image in the batch at the given index."""
-        h, w = self._image_sizes[index]
+        h, w = self.image_sizes[index]
         return self._data[index, :, :h, :w]
 
     def __str__(self) -> str:
@@ -342,15 +356,27 @@ def _check_images(images: Sequence[torch.Tensor]) -> None:
         raise ValueError("All images must be on the same device.")
 
 
-def _check_data_mask(data: torch.Tensor, mask: torch.Tensor) -> None:
-    """Check that the data and mask are compatible.
+def _check_mask_sizes(
+    data: Tensor[Literal["B C H W"], Number],
+    mask: Tensor[Literal["B H W"], bool] | None,
+    image_sizes: tuple[tuple[int, int], ...] | None,
+) -> None:
+    """Check that the mask and image sizes are valid."""
+    if mask is not None:
+        if mask.device != data.device:
+            raise ValueError("The data and mask must be on the same device.")
+        if mask.dtype != torch.bool:
+            raise ValueError("The mask must be of dtype bool.")
+        if data.shape[0] != mask.shape[0] or data.shape[2:] != mask.shape[1:]:
+            raise ValueError("The data and mask are incompatible.")
 
-    Args:
-        data: The data tensor.
-        mask: The mask tensor.
+    if image_sizes is not None:
+        if len(image_sizes) != len(data):
+            raise ValueError("The data and image_sizes are incompatible.")
+        if any((h > data.shape[2] or w > data.shape[3]) for h, w in image_sizes):
+            raise ValueError("The data and image_sizes are incompatible.")
 
-    Raises:
-        ValueError: If the data and mask are incompatible.
-    """
-    if data.shape[0] != mask.shape[0] or data.shape[2:] != mask.shape[1:]:
-        raise ValueError("The data and mask are incompatible.")
+    if mask is not None and image_sizes is not None:
+        mask_image_sizes = _compute_sizes_from_mask(mask)
+        if image_sizes != mask_image_sizes:
+            raise ValueError("The image_sizes and mask are incompatible.")

@@ -52,36 +52,15 @@ class BatchedSequences(Moveable):
             ValueError: If the `data` and `mask` (thus `sequence_lengths`) are
                 incompatible.
         """
-        match sequence_lengths, mask:
-            case None, None:
-                sequence_lengths = (data.shape[1],) * data.shape[0]
-                mask = torch.zeros(data.shape[:2], dtype=torch.bool, device=data.device)
-                check_validity = False
-            case None, _:
-                sequence_lengths = _compute_lengths_from_mask(mask)  # type: ignore
-            case _, None:
-                mask = _compute_mask_from_lengths(
-                    sequence_lengths, data.shape[1], data.device
-                )
-            case _, _:
-                if check_validity:
-                    mask_lengths = _compute_lengths_from_mask(mask)
-                    if mask_lengths != sequence_lengths:
-                        raise ValueError(
-                            "The sequence_lengths and mask are incompatible."
-                        )
+        if sequence_lengths is None and mask is None:
+            sequence_lengths = (data.shape[1],) * data.shape[0]
 
         if check_validity:
-            if mask.device != data.device:  # type: ignore
-                raise ValueError("The data and mask must be on the same device.")
-            if mask.dtype != torch.bool:  # type: ignore
-                raise ValueError("The mask must be of dtype bool.")
-            if data.shape[:-1] != mask.shape:  # type: ignore
-                raise ValueError("The data and mask are incompatible.")
+            _check_mask_lengths(data, mask, sequence_lengths)
 
         self._data = data
         self._sequence_lengths = sequence_lengths
-        self._mask: Tensor = mask  # type: ignore
+        self._mask = mask
 
     @classmethod
     def batch(
@@ -135,6 +114,10 @@ class BatchedSequences(Moveable):
 
         These are the lengths of the sequences before padding.
         """
+        if self._sequence_lengths is None:
+            assert self._mask is not None
+            self._sequence_lengths = _compute_lengths_from_mask(self._mask)
+
         return self._sequence_lengths
 
     @property
@@ -143,6 +126,12 @@ class BatchedSequences(Moveable):
 
         The mask is `True` for padded elements and `False` for valid elements.
         """
+        if self._mask is None:
+            assert self._sequence_lengths is not None
+            self._mask = _compute_mask_from_lengths(
+                self._sequence_lengths, self._data.shape[1], self._data.device
+            )
+
         return self._mask
 
     @property
@@ -167,7 +156,7 @@ class BatchedSequences(Moveable):
     def unbatch(self) -> tuple[Tensor[Literal["L D"], Number], ...]:
         """Unbatch the sequences."""
         return tuple(
-            self._data[i, :length] for i, length in enumerate(self._sequence_lengths)
+            self._data[i, :length] for i, length in enumerate(self.sequence_lengths)
         )
 
     def replace(self, data: Tensor[Literal["B L D"], Number]) -> Self:
@@ -193,7 +182,9 @@ class BatchedSequences(Moveable):
         return self.__class__(
             self._data.to(device, non_blocking=non_blocking),
             sequence_lengths=self._sequence_lengths,
-            mask=self._mask.to(device, non_blocking=non_blocking),
+            mask=self._mask.to(device, non_blocking=non_blocking)
+            if self._mask is not None
+            else None,
             check_validity=False,
         )
 
@@ -203,11 +194,11 @@ class BatchedSequences(Moveable):
 
     def __len__(self) -> int:
         """Get the number of sequences in the batch."""
-        return len(self._sequence_lengths)
+        return self._data.shape[0]
 
     def __getitem__(self, index: int) -> Tensor[Literal["L D"], Number]:
         """Get the sequence in the batch at the given index."""
-        return self._data[index, : self._sequence_lengths[index]]
+        return self._data[index, : self.sequence_lengths[index]]
 
     def __str__(self) -> str:
         """Get the string representation of the batched sequences."""
@@ -294,3 +285,29 @@ def _check_sequences(sequences: Sequence[torch.Tensor]) -> None:
 
     if any(sequence.device != sequences[0].device for sequence in sequences):
         raise ValueError("All sequences must be on the same device.")
+
+
+def _check_mask_lengths(
+    data: Tensor[Literal["B L D"], Number],
+    mask: Tensor[Literal["B L"], bool] | None,
+    sequence_lengths: tuple[int, ...] | None,
+) -> None:
+    """Check that the mask and sequence lengths are valid."""
+    if mask is not None:
+        if mask.device != data.device:
+            raise ValueError("The data and mask must be on the same device.")
+        if mask.dtype != torch.bool:
+            raise ValueError("The mask must be of dtype bool.")
+        if data.shape[:-1] != mask.shape:
+            raise ValueError("The data and mask are incompatible.")
+
+    if sequence_lengths is not None:
+        if len(sequence_lengths) != data.shape[0]:
+            raise ValueError("The data and sequence_lengths are incompatible.")
+        if any(length > data.shape[1] for length in sequence_lengths):
+            raise ValueError("The data and sequence_lengths are incompatible.")
+
+    if mask is not None and sequence_lengths is not None:
+        mask_lengths = _compute_lengths_from_mask(mask)
+        if mask_lengths != sequence_lengths:
+            raise ValueError("The sequence_lengths and mask are incompatible.")
