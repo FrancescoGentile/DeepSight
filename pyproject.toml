@@ -22,7 +22,9 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm]
-package-type = "library"
+distribution = "true"
+
+[tool.pdm.resolution]
 allow_prereleases = true
 
 [[tool.pdm.source]]
