@@ -532,9 +532,8 @@ def _check_graphs(graphs: Sequence[Graph]) -> None:
     ):
         raise ValueError("Cannot batch graphs some of which have edges and some not.")
 
-    if graphs[0].edge_features() is not None:
-        if any(
-            graphs[0].edge_features().shape[1] != graph.edge_features().shape[1]  # type: ignore
-            for graph in graphs
-        ):
-            raise ValueError("All graphs must have the same number of edge features.")
+    if graphs[0].edge_features() is not None and any(
+        graphs[0].edge_features().shape[1] != graph.edge_features().shape[1]  # type: ignore
+        for graph in graphs
+    ):
+        raise ValueError("All graphs must have the same number of edge features.")

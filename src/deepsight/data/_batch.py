@@ -25,10 +25,6 @@ class Batch[T](Moveable):
         if len(samples) == 0:
             raise ValueError("Batch must contain at least one sample.")
 
-        if isinstance(samples[0], Moveable):
-            if any(sample.device != samples[0].device for sample in samples):  # type: ignore[unreachable]
-                raise ValueError("All samples must be on the same device.")
-
         self._samples = samples
 
     @classmethod
@@ -81,9 +77,12 @@ class Batch[T](Moveable):
         if not isinstance(self._samples[0], Moveable):
             return self
 
-        return self.__class__(
-            [sample.to(device, non_blocking=non_blocking) for sample in self._samples]  # type: ignore
-        )
+        return self.__class__([
+            sample.to(device, non_blocking=non_blocking)
+            if isinstance(sample, Moveable)
+            else sample
+            for sample in self._samples
+        ])
 
     def split(self, num_splits: int) -> tuple[Self, ...]:
         """Split this batch into smaller batches.
