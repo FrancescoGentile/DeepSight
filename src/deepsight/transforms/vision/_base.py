@@ -5,7 +5,7 @@
 from collections.abc import Callable
 from typing import Protocol, overload
 
-from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.structures import BoundingBoxes, Image
 from deepsight.typing import Configurable
 
 

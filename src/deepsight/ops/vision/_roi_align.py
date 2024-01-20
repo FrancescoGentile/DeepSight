@@ -9,7 +9,7 @@ import torch
 from torch import nn
 
 from deepsight import utils
-from deepsight.structures.vision import BatchedImages, BoundingBoxes
+from deepsight.structures import BatchedImages, BoundingBoxes
 from deepsight.typing import Tensor
 
 

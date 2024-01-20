@@ -45,12 +45,13 @@ class BatchedSequences(Moveable):
                 The mask is `True` for padded elements and `False` for valid elements.
                 If not provided, the mask is computed from the sequence lengths.
             check_validity: Whether to check the validity of the inputs.
+                Checking the validity may be expensive, so it can be disabled
+                if the inputs are known to be valid.
 
         Raises:
             ValueError: If `sequence_lengths` and `mask` are both provided and are
                 incompatible.
-            ValueError: If the `data` and `mask` (thus `sequence_lengths`) are
-                incompatible.
+            ValueError: If the `data` and `mask`/`sequence_lengths` are incompatible.
         """
         if sequence_lengths is None and mask is None:
             sequence_lengths = (data.shape[1],) * data.shape[0]
@@ -153,17 +154,21 @@ class BatchedSequences(Moveable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
+    def is_padded(self) -> bool:
+        """Whether the sequences are padded."""
+        return any(length < self._data.shape[1] for length in self.sequence_lengths)
+
     def unbatch(self) -> tuple[Tensor[Literal["L D"], Number], ...]:
         """Unbatch the sequences."""
-        return tuple(
-            self._data[i, :length] for i, length in enumerate(self.sequence_lengths)
-        )
+        return tuple(self[i] for i in range(len(self)))
 
     def replace(self, data: Tensor[Literal["B L D"], Number]) -> Self:
         """Replace the data tensor.
 
         Raises:
-            ValueError: If the data and mask (thus sequence_lengths) are incompatible.
+            ValueError: If the new data tensor does not have the same shape as the
+                current data tensor (except for the feature dimension, i.e., the
+                last dimension).
         """
         if data.shape[:-1] != self._data.shape[:-1]:
             raise ValueError("The data and mask are incompatible.")

@@ -7,7 +7,7 @@ from typing import overload
 
 import torch
 
-from deepsight.structures.vision import BoundingBoxes, Image, ImageMode
+from deepsight.structures import BoundingBoxes, Image, ImageMode
 from deepsight.typing import Configs
 
 from ._base import Transform

@@ -7,7 +7,7 @@ from collections.abc import Iterable, Sequence
 from typing import overload
 
 from deepsight import utils
-from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.structures import BoundingBoxes, Image
 from deepsight.typing import Configs
 
 from ._base import Transform

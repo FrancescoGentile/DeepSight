@@ -2,7 +2,7 @@
 ##
 ##
 
-from typing import Literal, overload
+from typing import Literal
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
 from deepsight import utils
-from deepsight.structures.vision import BatchedImages, BatchedSequences
+from deepsight.structures import BatchedImages, BatchedSequences
 from deepsight.typing import Tensor
 
 
@@ -61,52 +61,30 @@ class PatchEmbedding(nn.Module):
             (input_shape[1] + self.patch_size[1] - 1) // self.patch_size[1],
         )
 
-    def forward(
-        self,
-        x: Tensor[Literal["B C H W"], float] | BatchedImages,
-    ) -> Tensor[Literal["B D h w"], float] | BatchedImages:
+    def forward(self, x: BatchedImages) -> BatchedImages:
         H, W = x.shape[-2:]  # noqa: N806
         pad_h = (self.patch_size[0] - H % self.patch_size[0]) % self.patch_size[0]
         pad_w = (self.patch_size[1] - W % self.patch_size[1]) % self.patch_size[1]
 
-        data = x.data if isinstance(x, BatchedImages) else x
+        data = x.data
         if pad_h > 0 or pad_w > 0:
             data = F.pad(data, (0, pad_w, 0, pad_h))
 
         data = self.proj(data)  # (B, D, h, w)
         data = self.norm(data)  # (B, D, h, w)
 
-        if isinstance(x, BatchedImages):
-            return BatchedImages(
-                data,
-                image_sizes=tuple(
-                    self.compute_output_shape(image_size)
-                    for image_size in x.image_sizes
-                ),
-            )
-
-        return data
+        return BatchedImages(
+            data,
+            image_sizes=tuple(
+                self.compute_output_shape(image_size) for image_size in x.image_sizes
+            ),
+        )
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(
-        self,
-        x: Tensor[Literal["B C H W"], float],
-    ) -> Tensor[Literal["B D h w"], float]: ...
-
-    @overload
-    def __call__(
-        self,
-        x: BatchedImages,
-    ) -> BatchedImages: ...
-
-    def __call__(
-        self,
-        x: Tensor[Literal["B C H W"], float] | BatchedImages,
-    ) -> Tensor[Literal["B D h w"], float] | BatchedImages:
+    def __call__(self, x: BatchedImages) -> BatchedImages:
         return super().__call__(x)
 
 
@@ -158,15 +136,15 @@ class LearnedPositionalEmbedding(nn.Module):
 
     def forward(
         self,
-        x: Tensor[Literal["B D h w"], float] | BatchedImages,
+        x: BatchedImages,
         prefix_tokens: Tensor[Literal["1 _ D"], float]
         | list[Tensor[Literal["1 _ D"], float]]
         | None = None,
     ) -> Tensor[Literal["B L D"], float] | BatchedSequences:
-        if isinstance(x, torch.Tensor):
+        if not x.is_padded():
             h, w = x.shape[-2:]
             pos_embeds = self._resize((h, w))
-            out = x.flatten(2).transpose(1, 2)  # (B, hw, D)
+            out = x.data.flatten(2).transpose(1, 2)  # (B, hw, D)
         else:
             pos_embeds_cache: dict[tuple[int, int], torch.Tensor] = {}
             pos_embeds_list = []
@@ -208,41 +186,21 @@ class LearnedPositionalEmbedding(nn.Module):
             out = torch.cat(prefix_tokens + [out], dim=1)
 
         out = self.pos_dropout(out)
-        if isinstance(x, torch.Tensor):
-            return out
-        else:
-            seq_lengths = tuple(num_prefix_tokens + h * w for h, w in x.image_sizes)
-            return BatchedSequences(out, sequence_lengths=seq_lengths)
+
+        seq_lengths = tuple(num_prefix_tokens + h * w for h, w in x.image_sizes)
+        return BatchedSequences(out, sequence_lengths=seq_lengths)
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(
-        self,
-        x: Tensor[Literal["B D h w"], float],
-        prefix_tokens: Tensor[Literal["1 _ D"], float]
-        | list[Tensor[Literal["1 _ D"], float]]
-        | None = None,
-    ) -> Tensor[Literal["B L D"], float]: ...
-
-    @overload
     def __call__(
         self,
         x: BatchedImages,
         prefix_tokens: Tensor[Literal["1 _ D"], float]
         | list[Tensor[Literal["1 _ D"], float]]
         | None = None,
-    ) -> BatchedSequences: ...
-
-    def __call__(
-        self,
-        x: Tensor[Literal["B D h w"], float] | BatchedImages,
-        prefix_tokens: Tensor[Literal["1 _ D"], float]
-        | list[Tensor[Literal["1 _ D"], float]]
-        | None = None,
-    ) -> Tensor[Literal["B L D"], float] | BatchedSequences:
+    ) -> BatchedSequences:
         return super().__call__(x, prefix_tokens)
 
     # ----------------------------------------------------------------------- #

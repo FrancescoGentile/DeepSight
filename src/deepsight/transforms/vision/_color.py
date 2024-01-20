@@ -6,7 +6,7 @@ import math
 import random
 from typing import overload
 
-from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.structures import BoundingBoxes, Image
 from deepsight.typing import Configs
 
 from ._base import Transform

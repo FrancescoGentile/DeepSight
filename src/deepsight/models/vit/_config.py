@@ -23,8 +23,8 @@ class Variant(enum.Enum):
 
 
 @dataclass(frozen=True)
-class Config:
-    """The Vision Transformer (ViT) configuration."""
+class EncoderConfig:
+    """Configuration for the ViT encoder."""
 
     image_size: int | tuple[int, int]
     patch_size: int | tuple[int, int]
@@ -63,68 +63,77 @@ class Config:
 
     @classmethod
     def from_variant(cls, variant: Variant) -> Self:
-        """Constructs a ViT config from a predefined variant."""
-        match variant:
-            case Variant.OG_BASE_PATCH32_IMG224:
-                return cls(
-                    patch_size=32,
-                    image_size=224,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                )
-            case Variant.OG_BASE_PATCH32_IMG384:
-                return cls(
-                    patch_size=32,
-                    image_size=384,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                )
-            case Variant.DINOV2_BASE_PATCH14_IMG518:
-                return cls(
-                    patch_size=14,
-                    image_size=518,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                    layer_scale_init_value=1e-5,
-                )
-            case Variant.DINOV2_BASE_PATCH14_REG4_IMG518:
-                return cls(
-                    patch_size=14,
-                    image_size=518,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                    num_register_tokens=4,
-                    layer_scale_init_value=1e-5,
-                    use_prefix_embedding=False,
-                )
-            case Variant.CLIP_BASE_PATCH32_IMG224:
-                return cls(
-                    patch_size=32,
-                    image_size=224,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                    pre_normalize=True,
-                )
-            case Variant.CLIP_BASE_PATCH32_IMG256:
-                return cls(
-                    patch_size=32,
-                    image_size=256,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                    pre_normalize=True,
-                )
-            case Variant.CLIP_BASE_PATCH32_IMG384:
-                return cls(
-                    patch_size=32,
-                    image_size=384,
-                    embed_dim=768,
-                    num_layers=12,
-                    num_heads=12,
-                    pre_normalize=True,
-                )
+        """Builds an encoder config from a predefined variant."""
+        return _build_encoder_config(variant)  # type: ignore
+
+
+# --------------------------------------------------------------------------- #
+# Private functions
+# --------------------------------------------------------------------------- #
+
+
+def _build_encoder_config(variant: Variant) -> EncoderConfig:
+    match variant:
+        case Variant.OG_BASE_PATCH32_IMG224:
+            return EncoderConfig(
+                patch_size=32,
+                image_size=224,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+            )
+        case Variant.OG_BASE_PATCH32_IMG384:
+            return EncoderConfig(
+                patch_size=32,
+                image_size=384,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+            )
+        case Variant.DINOV2_BASE_PATCH14_IMG518:
+            return EncoderConfig(
+                patch_size=14,
+                image_size=518,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+                layer_scale_init_value=1e-5,
+            )
+        case Variant.DINOV2_BASE_PATCH14_REG4_IMG518:
+            return EncoderConfig(
+                patch_size=14,
+                image_size=518,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+                num_register_tokens=4,
+                layer_scale_init_value=1e-5,
+                use_prefix_embedding=False,
+            )
+        case Variant.CLIP_BASE_PATCH32_IMG224:
+            return EncoderConfig(
+                patch_size=32,
+                image_size=224,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+                pre_normalize=True,
+            )
+        case Variant.CLIP_BASE_PATCH32_IMG256:
+            return EncoderConfig(
+                patch_size=32,
+                image_size=256,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+                pre_normalize=True,
+            )
+        case Variant.CLIP_BASE_PATCH32_IMG384:
+            return EncoderConfig(
+                patch_size=32,
+                image_size=384,
+                embed_dim=768,
+                num_layers=12,
+                num_heads=12,
+                pre_normalize=True,
+            )

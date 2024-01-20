@@ -56,12 +56,11 @@ class BatchedImages(Moveable):
                 disabled if the inputs are known to be valid.
 
         Raises:
-            ValueError: raised under the following conditions:
-                - If `image_sizes` and `mask` are provided and are incompatible.
-                - If the `data` and `mask` (thus `image_sizes`) are incompatible.
+            ValueError: if `image_sizes` and `mask` are provided and are incompatible.
+            ValueError: f the `data` and `mask`/`image_sizes` are incompatible.
         """
         if image_sizes is None and mask is None:
-            image_sizes = tuple((data.shape[2], data.shape[3]) for _ in data)
+            image_sizes = ((data.shape[2], data.shape[3]),) * data.shape[0]
 
         if check_validity:
             _check_mask_sizes(data, mask, image_sizes)
@@ -190,18 +189,23 @@ class BatchedImages(Moveable):
     # Public methods
     # ----------------------------------------------------------------------- #
 
+    def is_padded(self) -> bool:
+        """Whether the images in the batch are padded."""
+        return any(
+            (h < self._data.shape[2] or w < self._data.shape[3])
+            for h, w in self.image_sizes
+        )
+
     def unbatch(self) -> tuple[Tensor[Literal["C H W"], Number], ...]:
         """Unbatch the images into a list of tensors."""
-        return tuple(
-            self._data[i, :, :h, :w] for i, (h, w) in enumerate(self.image_sizes)
-        )
+        return tuple(self[i] for i in range(len(self)))
 
     def replace(self, data: Tensor[Literal["B C H W"], Number]) -> Self:
         """Replace the data tensor.
 
         Raises:
-            ValueError: If the shape of the new data tensor is incompatible
-                with the mask.
+            ValueError: If the new data tensor does have a different batch size
+                or spatial dimensions than the current data tensor.
         """
         if self.data.shape[0] != data.shape[0]:
             raise ValueError("The batch size cannot be changed.")

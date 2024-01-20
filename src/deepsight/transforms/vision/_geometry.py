@@ -5,7 +5,7 @@
 from typing import overload
 
 from deepsight import utils
-from deepsight.structures.vision import BoundingBoxes, Image
+from deepsight.structures import BoundingBoxes, Image
 from deepsight.typing import Configs
 from deepsight.utils import InterpolationMode
 
