@@ -154,12 +154,7 @@ class Encoder(nn.Module):
             mask = None  # since there are no padding tokens, no mask is needed
         else:
             out = x_embed.data
-            # The mask in BatchedSequences has True for the padding tokens
-            # and False for the valid tokens. The boolean attention mask used by
-            # `scaled_dot_product_attention` instead should be the opposite (True for
-            # elements that take part in the attention and False for elements that are
-            # masked out). Therefore, we need to invert the mask.
-            mask = ~x_embed.mask[:, None, None]
+            mask = x_embed.padding_mask[:, None, None]  # (B, 1, 1, (cls + reg) + hw)
 
         layer_output: torch.Tensor = self.pre_layernorm(out)
         torch_outputs: list[torch.Tensor] = []

@@ -11,13 +11,7 @@ from deepsight.typing import Moveable, Number, Tensor
 
 
 class BatchedSequences(Moveable):
-    """Structure to hold a batch of sequences as a single tensor.
-
-    The tensor is obtained by padding the sequences to the largest length in
-    the batch. Since the sequences are padded, a mask is also stored to
-    indicate which elements are padded and which not. The mask is True for
-    padded elements and False for valid elements.
-    """
+    """Structure to hold a batch of sequences as a single tensor."""
 
     # ----------------------------------------------------------------------- #
     # Constructor and Factory Methods
@@ -42,7 +36,7 @@ class BatchedSequences(Moveable):
             data: The tensor containing the batched sequences.
             sequence_lengths: The lengths of the sequences in the batch.
             mask: The mask indicating which elements are padded and which not.
-                The mask is `True` for padded elements and `False` for valid elements.
+                The mask is `True` for valid elements and `False` for padded elements.
                 If not provided, the mask is computed from the sequence lengths.
             check_validity: Whether to check the validity of the inputs.
                 Checking the validity may be expensive, so it can be disabled
@@ -70,6 +64,9 @@ class BatchedSequences(Moveable):
         padding_value: float = 0.0,
     ) -> Self:
         """Batch a list of sequences.
+
+        The sequences are padded to the length of the longest sequence in the batch
+        and then stacked into a single tensor.
 
         Args:
             sequences: The sequences to batch.
@@ -122,10 +119,10 @@ class BatchedSequences(Moveable):
         return self._sequence_lengths
 
     @property
-    def mask(self) -> Tensor[Literal["B L"], bool]:
+    def padding_mask(self) -> Tensor[Literal["B L"], bool]:
         """The mask indicating which elements are padded and which not.
 
-        The mask is `True` for padded elements and `False` for valid elements.
+        The mask is `True` for valid elements and `False` for padded elements.
         """
         if self._mask is None:
             assert self._sequence_lengths is not None
@@ -233,13 +230,13 @@ def _compute_lengths_from_mask(mask: Tensor[Literal["B L"], bool]) -> tuple[int,
 
     Args:
         mask: The mask indicating which elements are padded and which not.
-            The mask is `True` for padded elements and `False` for valid elements.
+            The mask is `True` for valid elements and `False` for padded elements.
 
     Returns:
         The lengths of the sequences in the batch.
     """
-    lengths = mask.shape[1] - mask.sum(dim=1)
-    return tuple(lengths.tolist())  # type: ignore
+    lengths = mask.sum(dim=1)
+    return tuple(lengths.tolist())
 
 
 def _compute_mask_from_lengths(
@@ -254,12 +251,12 @@ def _compute_mask_from_lengths(
 
     Returns:
         The mask indicating which elements are padded and which not.
-        The mask is `True` for padded elements and `False` for valid elements.
+        The mask is `True` for valid elements and `False` for padded elements.
     """
     indices = torch.arange(max_length, device=device)
     indices = indices.expand(len(sequence_lengths), max_length)
 
-    mask = indices >= torch.tensor(sequence_lengths, device=device).unsqueeze(1)
+    mask = indices < torch.tensor(sequence_lengths, device=device).unsqueeze(1)
     return mask
 
 

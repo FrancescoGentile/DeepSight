@@ -15,13 +15,7 @@ from ._batched_sequences import BatchedSequences
 
 
 class BatchedImages(Moveable):
-    """Structure to hold a batch of images as a single tensor.
-
-    The tensor is obtained by padding the images to the largest height and
-    width in the batch. Since the images are padded, a mask is also stored
-    to indicate which pixels are padded and which not. The mask is True for
-    padded pixels and False for valid pixels.
-    """
+    """Structure to hold a batch of images as a single tensor."""
 
     # ----------------------------------------------------------------------- #
     # Constructor and Factory methods
@@ -77,6 +71,10 @@ class BatchedImages(Moveable):
         size_divisible_by: int | tuple[int, int] | None = None,
     ) -> Self:
         """Batch a list of images into a single tensor.
+
+        The images are padded to the largest height and width in the batch (plus
+        the optional `size_divisible_by` padding) and stacked into a single
+        tensor.
 
         Args:
             images: The images to batch.
@@ -151,13 +149,13 @@ class BatchedImages(Moveable):
         return self._image_sizes
 
     @property
-    def mask(self) -> Tensor[Literal["B H W"], bool]:
+    def padding_mask(self) -> Tensor[Literal["B H W"], bool]:
         """The mask indicating which pixels are padded and which not.
 
         The mask is a boolean tensor of shape `(B, H, W)`, where `B` is the
         batch size, `H` is the maximum height of the images in the batch, and
         `W` is the maximum width of the images in the batch. The entries of the
-        mask are `True` for padded pixels and `False` for valid pixels.
+        mask are `True` for valid pixels and `False` for padded pixels.
         """
         if self._mask is None:
             assert self._image_sizes is not None
@@ -288,15 +286,15 @@ def _compute_sizes_from_mask(
 
     Args:
         mask: The mask indicating which pixels are padded and which not.
-            The mask is `True` for padded pixels and `False` for valid pixels.
+            The mask is `True` for valid pixels and `False` for padded pixels.
 
     Returns:
         The sizes of the images.
     """
     sizes: list[tuple[int, int]] = []
     for m in mask:
-        h = int(m.shape[0] - m.sum(0).min().item())
-        w = int(m.shape[1] - m.sum(1).min().item())
+        h = int(m.sum(0).max().item())
+        w = int(m.sum(1).max().item())
 
         sizes.append((h, w))
 
@@ -319,14 +317,14 @@ def _compute_mask_from_sizes(
 
     Returns:
         The mask indicating which pixels are padded and which not.
-        The mask is `True` for padded pixels and `False` for valid pixels.
+        The mask is `True` for valid pixels and `False` for padded pixels.
     """
-    mask = torch.ones(
+    mask = torch.zeros(
         (len(sizes), max_height, max_width), dtype=torch.bool, device=device
     )
 
     for i, size in enumerate(sizes):
-        mask[i, : size[0], : size[1]] = False
+        mask[i, : size[0], : size[1]] = True
 
     return mask
 
