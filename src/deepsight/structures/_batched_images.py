@@ -118,12 +118,26 @@ class BatchedImages(Moveable):
         image_sizes: tuple[tuple[int, int], ...],
     ) -> Self:
         """Convert a batch of sequences to a batch of images."""
-        images = [
-            seq.view(image_size[0], image_size[1], -1).permute(2, 0, 1)
-            for seq, image_size in zip(sequences.unbatch(), image_sizes, strict=True)
-        ]
+        if len(sequences) != len(image_sizes):
+            raise ValueError("The number of sequences and image_sizes must be equal.")
 
-        return cls.batch(images)
+        if not sequences.is_padded():
+            # if the sequence are not padded, it means that all images have the same
+            # height and width, so we can simply reshape the sequences to images
+            h, w = image_sizes[0]
+            images = sequences.data.view(len(sequences), h, w, -1)
+            return cls(images, image_sizes=image_sizes)
+        else:
+            # if the sequences are padded, we need to unbatch them and pad each image
+            # individually
+            images = [
+                seq.view(image_size[0], image_size[1], -1).permute(2, 0, 1)
+                for seq, image_size in zip(
+                    sequences.unbatch(), image_sizes, strict=True
+                )
+            ]
+
+            return cls.batch(images)
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -198,8 +212,8 @@ class BatchedImages(Moveable):
         """Unbatch the images into a list of tensors."""
         return tuple(self[i] for i in range(len(self)))
 
-    def replace(self, data: Tensor[Literal["B C H W"], Number]) -> Self:
-        """Replace the data tensor.
+    def new_with(self, data: Tensor[Literal["B C H W"], Number]) -> Self:
+        """Return new batched images with the given data tensor.
 
         Raises:
             ValueError: If the new data tensor does have a different batch size
@@ -226,9 +240,11 @@ class BatchedImages(Moveable):
         # mask = self._mask.flatten(1)
         # sizes = tuple(s[0] * s[1] for s in self._image_sizes)
         # return BatchedSequences(data, sizes, mask, check_validity=False)
-
-        flattened_images = [image.flatten(1).T for image in self.unbatch()]
-        return BatchedSequences.batch(flattened_images)
+        if not self.is_padded():
+            return BatchedSequences(self._data.flatten(2).permute(0, 2, 1))
+        else:
+            flattened_images = [image.flatten(1).T for image in self.unbatch()]
+            return BatchedSequences.batch(flattened_images)
 
     def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         if self.device == torch.device(device):

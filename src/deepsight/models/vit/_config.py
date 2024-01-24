@@ -3,9 +3,14 @@
 ##
 
 import enum
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import Self
 
+from torch import nn
+
+from deepsight.layers import SequenceNorm
 from deepsight.typing import str_enum
 
 
@@ -36,7 +41,7 @@ class EncoderConfig:
     qkv_bias: bool = True
     qk_normalize: bool = False
     layer_scale_init_value: float | None = None
-    layer_norm_eps: float = 1e-6
+    norm_layer: Callable[[int], SequenceNorm] = partial(nn.LayerNorm, eps=1e-6)
     use_class_token: bool = True
     num_register_tokens: int = 0
     use_prefix_embedding: bool = True

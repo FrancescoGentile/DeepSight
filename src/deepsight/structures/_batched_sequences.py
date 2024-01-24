@@ -159,8 +159,8 @@ class BatchedSequences(Moveable):
         """Unbatch the sequences."""
         return tuple(self[i] for i in range(len(self)))
 
-    def replace(self, data: Tensor[Literal["B L D"], Number]) -> Self:
-        """Replace the data tensor.
+    def new_with(self, data: Tensor[Literal["B L D"], Number]) -> Self:
+        """Return new batched sequences with the given data tensor.
 
         Raises:
             ValueError: If the new data tensor does not have the same shape as the

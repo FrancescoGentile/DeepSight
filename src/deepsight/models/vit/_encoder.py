@@ -11,8 +11,7 @@ import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
 from deepsight import utils
-from deepsight.layers import LayerScale
-from deepsight.layers.vision import LearnedPositionalEmbedding, PatchEmbedding
+from deepsight.layers import ConvPatchify, LayerScale, LearnedImagePositionEmbedding
 from deepsight.structures import BatchedImages, BatchedSequences
 from deepsight.typing import Tensor
 
@@ -35,13 +34,11 @@ class Encoder(nn.Module):
         self.num_prefix_tokens = 1 if config.use_class_token else 0
         self.num_prefix_tokens += config.num_register_tokens
 
-        self.use_prefix_embedding = config.use_prefix_embedding
-
-        self.patch_embed = PatchEmbedding(
+        self.patchify = ConvPatchify(
             patch_size=patch_size,
             in_channels=config.in_channels,
             embed_dim=config.embed_dim,
-            layer_norm_eps=None,
+            norm_layer=None,
             bias=not config.pre_normalize,
         )
 
@@ -57,25 +54,29 @@ class Encoder(nn.Module):
         else:
             self.register_tokens = None
 
-        self.pos_embed = LearnedPositionalEmbedding(
+        self.patch_pos_embed = LearnedImagePositionEmbedding(
             embed_dim=config.embed_dim,
             num_patches=(self.num_h_patches, self.num_w_patches),
-            num_prefix_embedding=self.num_prefix_tokens
-            if config.use_prefix_embedding
-            else 0,
-            pos_dropout=config.pos_embed_dropout,
+            init_scale=0.02,
         )
+        if self.num_prefix_tokens > 0 and config.use_prefix_embedding:
+            embeds = torch.randn(1, self.num_prefix_tokens, config.embed_dim)
+            self.prefix_pos_embed = nn.Parameter(embeds * 0.02)
+        else:
+            self.prefix_pos_embed = None
 
-        self.pre_layernorm = (
-            nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+        self.pos_dropout = nn.Dropout(config.pos_embed_dropout)
+
+        self.pre_norm = (
+            config.norm_layer(config.embed_dim)
             if config.pre_normalize
             else nn.Identity()
         )
 
         self.layers = nn.ModuleList([Layer(config) for _ in range(config.num_layers)])
 
-        self.post_layernorm = (
-            nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+        self.post_norm = (
+            config.norm_layer(config.embed_dim)
             if config.post_normalize
             else nn.Identity()
         )
@@ -98,7 +99,7 @@ class Encoder(nn.Module):
         self,
         images: BatchedImages,
         return_layers: int | Iterable[int] = -1,
-        apply_post_layernorm: bool = True,
+        apply_post_norm: bool = True,
         remove_prefix_tokens: Literal[True] = True,
     ) -> tuple[BatchedImages, ...]: ...
 
@@ -107,7 +108,7 @@ class Encoder(nn.Module):
         self,
         images: BatchedImages,
         return_layers: int | Iterable[int] = -1,
-        apply_post_layernorm: bool = True,
+        apply_post_norm: bool = True,
         remove_prefix_tokens: Literal[False] = False,
     ) -> tuple[BatchedSequences, ...]: ...
 
@@ -115,7 +116,7 @@ class Encoder(nn.Module):
         self,
         images: BatchedImages,
         return_layers: int | Iterable[int] = -1,
-        apply_post_layernorm: bool = True,
+        apply_post_norm: bool = True,
         remove_prefix_tokens: bool = True,
     ) -> tuple[BatchedImages, ...] | tuple[BatchedSequences, ...]:
         """Get the intermediate outputs of the encoder.
@@ -125,8 +126,8 @@ class Encoder(nn.Module):
             return_layers: The indices of the layers to return. The indices can be
                 negative, in which case they are interpreted as relative to the end of
                 the list of layers.
-            apply_post_layernorm: Whether to apply post layer normalization. If multiple
-                layers are returned, this will be applied to each layer.
+            apply_post_norm: Whether to apply post normalization to the outputs of the
+                returned layers.
             remove_prefix_tokens: Whether to remove the prefix tokens from the output.
                 If the prefix tokens are not removed, the output of each layer will
                 consist of a sequence of vectors corresponding to the patches features
@@ -139,16 +140,44 @@ class Encoder(nn.Module):
         """
         return_layers = utils.to_tuple(return_layers)
         take_indices = {i if i >= 0 else len(self.layers) + i for i in return_layers}
+        for i in take_indices:
+            if i < 0 or i >= len(self.layers):
+                raise IndexError(
+                    f"Index {i} is out of range for the encoder with "
+                    f"{len(self.layers)} layers."
+                )
 
-        x = self.patch_embed(images)  # (B, D, h, w)
+        patches = self.patchify(images)  # (B, D, h, w)
+        patch_embed = self.patch_pos_embed(patches)  # (B, D, h, w)
+
+        x = patches.to_sequences()  # (B, hw, D)
+        x_pos = patch_embed.to_sequences()  # (B, hw, D)
 
         prefix_tokens = []
         if self.cls_token is not None:
-            prefix_tokens.append(self.cls_token)
+            prefix_tokens.append(self.cls_token.expand(len(images), -1, -1))
         if self.register_tokens is not None:
-            prefix_tokens.append(self.register_tokens)
+            prefix_tokens.append(self.register_tokens.expand(len(images), -1, -1))
 
-        x_embed = self.pos_embed(x, prefix_tokens)  # (B, (cls + reg) + hw, D)
+        if self.prefix_pos_embed is not None:
+            x_data = torch.cat(prefix_tokens + [x.data], dim=1)
+            prefix_pos_embed = self.prefix_pos_embed.expand(len(images), -1, -1)
+            x_pos_data = torch.cat([prefix_pos_embed, x_pos.data], dim=1)
+
+            x_data = x_data + x_pos_data
+        else:
+            x_data = x.data + x_pos.data
+            if len(prefix_tokens) > 0:
+                x_data = torch.cat(prefix_tokens + [x_data], dim=1)
+
+        x_data = self.pos_dropout(x_data)
+        x_embed = BatchedSequences(
+            x_data,
+            sequence_lengths=tuple(
+                self.num_prefix_tokens + sl for sl in x.sequence_lengths
+            ),
+        )
+
         if not x_embed.is_padded():
             out = x_embed.data
             mask = None  # since there are no padding tokens, no mask is needed
@@ -156,20 +185,20 @@ class Encoder(nn.Module):
             out = x_embed.data
             mask = x_embed.padding_mask[:, None, None]  # (B, 1, 1, (cls + reg) + hw)
 
-        layer_output: torch.Tensor = self.pre_layernorm(out)
+        layer_output: torch.Tensor = self.pre_norm(out)
         torch_outputs: list[torch.Tensor] = []
         for i, layer in enumerate(self.layers):
             layer_output = layer(layer_output, mask)
             if i in take_indices:
                 torch_outputs.append(layer_output)
 
-        if apply_post_layernorm:
-            torch_outputs = [self.post_layernorm(out) for out in torch_outputs]
+        if apply_post_norm:
+            torch_outputs = [self.post_norm(out) for out in torch_outputs]
 
-        outputs = tuple(x_embed.replace(data=out) for out in torch_outputs)
+        outputs = tuple(x_embed.new_with(data=out) for out in torch_outputs)
         if remove_prefix_tokens:
             image_sizes = tuple(
-                self.patch_embed.compute_output_shape(image_size)
+                self.patchify.compute_output_shape(image_size)
                 for image_size in images.image_sizes
             )
 
@@ -187,7 +216,7 @@ class Encoder(nn.Module):
         return self.get_intermediate_outputs(
             images,
             return_layers=-1,
-            apply_post_layernorm=True,
+            apply_post_norm=True,
             remove_prefix_tokens=False,
         )[-1]
 
@@ -228,7 +257,7 @@ class Layer(nn.Module):
         super().__init__()
 
         # Self-Attention
-        self.sa_layernorm = nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+        self.sa_norm = config.norm_layer(config.embed_dim)
         self.sa = SelfAttention(config)
         self.sa_layerscale = (
             LayerScale(config.embed_dim, config.layer_scale_init_value)
@@ -237,7 +266,7 @@ class Layer(nn.Module):
         )
 
         # Feed-Forward
-        self.ffn_layernorm = nn.LayerNorm(config.embed_dim, eps=config.layer_norm_eps)
+        self.ffn_norm = config.norm_layer(config.embed_dim)
         hidden_dim = int(config.embed_dim * config.ffn_hidden_ratio)
         self.ffn = nn.Sequential(
             nn.Linear(config.embed_dim, hidden_dim),
@@ -257,12 +286,12 @@ class Layer(nn.Module):
         x: Tensor[Literal["B N D"], float],
         mask: Tensor[Literal[" B 1 1 N"], bool] | None,
     ) -> Tensor[Literal["B N D"], float]:
-        sa_x = self.sa_layernorm(x)
+        sa_x = self.sa_norm(x)
         sa_x = self.sa(sa_x, mask)
         sa_x = self.sa_layerscale(sa_x)
         x = x + sa_x
 
-        ffn_x = self.ffn_layernorm(x)
+        ffn_x = self.ffn_norm(x)
         ffn_x = self.ffn(ffn_x)
         ffn_x = self.ffn_layerscale(ffn_x)
         x = x + ffn_x
@@ -286,15 +315,15 @@ class SelfAttention(nn.Module):
             config.embed_dim, config.embed_dim * 3, bias=config.qkv_bias
         )
 
-        qk_layer_norm_eps = config.layer_norm_eps if config.qk_normalize else None
         self.q_norm = (
-            nn.LayerNorm(config.embed_dim, eps=qk_layer_norm_eps)
-            if qk_layer_norm_eps is not None
+            config.norm_layer(config.embed_dim)
+            if config.qk_normalize
             else nn.Identity()
         )
+
         self.k_norm = (
-            nn.LayerNorm(config.embed_dim, eps=qk_layer_norm_eps)
-            if qk_layer_norm_eps is not None
+            config.norm_layer(config.embed_dim)
+            if config.qk_normalize
             else nn.Identity()
         )
         self.qkv_dropout = nn.Dropout(config.qkv_dropout)
