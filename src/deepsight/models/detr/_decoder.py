@@ -59,7 +59,7 @@ class Decoder(nn.Module):
             memory: The encoded image features.
             query_pos: The positional embeddings for the object queries.
             memory_pos: The positional embeddings for the image features.
-            mask: The attention mask.
+            mask: The attention mask for the cross-attention.
 
         Returns:
             The decoder outputs stacked along the first dimension. Each decoder output
@@ -129,7 +129,6 @@ class DecoderLayer(nn.Module):
             value=query,
             query_pos=query_pos,
             key_pos=query_pos,
-            mask=mask,
         )
         query = self.self_attn_norm(query + sa_query)
 
