@@ -49,7 +49,7 @@ class BoundingBoxes(Moveable):
     def __init__(
         self,
         coordinates: Any,
-        format: BoundingBoxFormat,  # noqa: A002
+        format: BoundingBoxFormat | str,  # noqa: A002
         normalized: bool,
         image_size: tuple[int, int],
     ) -> None:
@@ -71,7 +71,7 @@ class BoundingBoxes(Moveable):
         _check_coordinates(coords)
 
         self._coordinates = coords
-        self._format = format
+        self._format = BoundingBoxFormat(format)
         self._normalized = normalized
         self._image_size = image_size
 
@@ -81,22 +81,27 @@ class BoundingBoxes(Moveable):
 
     @property
     def coordinates(self) -> Tensor[Literal["N 4"], float]:
+        """The bounding box coordinates."""
         return self._coordinates
 
     @property
     def format(self) -> BoundingBoxFormat:
+        """The format of the bounding box coordinates."""
         return self._format
 
     @property
     def normalized(self) -> bool:
+        """Whether the bounding box coordinates are normalized or not."""
         return self._normalized
 
     @property
     def image_size(self) -> tuple[int, int]:
+        """The size of the image that the bounding boxes are relative to."""
         return self._image_size
 
     @property
     def device(self) -> torch.device:
+        """The device of the bounding box coordinates."""
         return self._coordinates.device
 
     # -----------------------------------------------------------------------  #

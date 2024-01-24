@@ -13,6 +13,8 @@ from ._bboxes import BoundingBoxes, BoundingBoxFormat
 
 
 class BatchedBoundingBoxes:
+    """Structure to store a batch of multiple bounding boxes per image."""
+
     # ----------------------------------------------------------------------- #
     # Constructor and Factory Methods
     # ----------------------------------------------------------------------- #
@@ -20,14 +22,30 @@ class BatchedBoundingBoxes:
     def __init__(
         self,
         coordinates: Tensor[Literal["B N 4"], float],
-        format: BoundingBoxFormat,  # noqa: A002
+        format: BoundingBoxFormat | str,  # noqa: A002
         normalized: bool,
         image_sizes: tuple[tuple[int, int], ...],
+        num_boxes_per_image: tuple[int, ...],
     ) -> None:
+        """Initialize the bounding boxes."""
+        if coordinates.ndim != 3 or coordinates.shape[-1] != 4:
+            raise ValueError(
+                "The coordinates must have shape (B, N, 4), "
+                f"but got {coordinates.shape}."
+            )
+
+        if len(coordinates) != len(image_sizes) != len(num_boxes_per_image):
+            raise ValueError(
+                "The number of bounding boxes, image sizes, and number of boxes "
+                f"per image must be the same, but got {len(coordinates)}, "
+                f"{len(image_sizes)}, and {len(num_boxes_per_image)}."
+            )
+
         self._coordinates = coordinates.float()
-        self._format = format
+        self._format = BoundingBoxFormat(format)
         self._normalized = normalized
         self._image_sizes = image_sizes
+        self._num_boxes = num_boxes_per_image
 
     @classmethod
     def batch(cls, boxes: Sequence[BoundingBoxes]) -> Self:
@@ -37,23 +55,19 @@ class BatchedBoundingBoxes:
 
         boxes = [b.convert_like(boxes[0]) for b in boxes]
 
-        max_num_boxes = max(len(b) for b in boxes)
+        num_boxes = tuple(len(b) for b in boxes)
+        max_num_boxes = max(num_boxes)
         coordinates = boxes[0].coordinates.new_zeros((len(boxes), max_num_boxes, 4))
-        mask = torch.zeros(
-            (len(boxes), max_num_boxes),
-            dtype=torch.bool,
-            device=boxes[0].coordinates.device,
-        )
 
         for i, b in enumerate(boxes):
             coordinates[i, : len(b)].copy_(b.coordinates)
-            mask[i, len(b) :] = True
 
         return cls(
             coordinates=coordinates,
             format=boxes[0].format,
             normalized=boxes[0].normalized,
             image_sizes=tuple(b.image_size for b in boxes),
+            num_boxes_per_image=num_boxes,
         )
 
     # ----------------------------------------------------------------------- #
@@ -62,19 +76,33 @@ class BatchedBoundingBoxes:
 
     @property
     def coordinates(self) -> Tensor[Literal["B N 4"], float]:
+        """The coordinates of the bounding boxes."""
         return self._coordinates
 
     @property
     def format(self) -> BoundingBoxFormat:  # noqa: A002
+        """The format of the bounding boxes."""
         return self._format
 
     @property
     def normalized(self) -> bool:
+        """Whether the bounding boxes are normalized with respect to the image size."""
         return self._normalized
 
     @property
     def image_sizes(self) -> tuple[tuple[int, int], ...]:
+        """The image sizes of the bounding boxes."""
         return self._image_sizes
+
+    @property
+    def num_boxes_per_image(self) -> tuple[int, ...]:
+        """The number of bounding boxes per image."""
+        return self._num_boxes
+
+    @property
+    def device(self) -> torch.device:
+        """The device of the bounding boxes."""
+        return self._coordinates.device
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -106,6 +134,7 @@ class BatchedBoundingBoxes:
             format=BoundingBoxFormat.XYXY,
             normalized=self._normalized,
             image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
         )
 
     def to_xywh(self) -> Self:
@@ -134,6 +163,7 @@ class BatchedBoundingBoxes:
             format=BoundingBoxFormat.XYWH,
             normalized=self._normalized,
             image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
         )
 
     def to_cxcywh(self) -> Self:
@@ -162,6 +192,7 @@ class BatchedBoundingBoxes:
             format=BoundingBoxFormat.CXCYWH,
             normalized=self._normalized,
             image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
         )
 
     def normalize(self) -> Self:
@@ -188,6 +219,7 @@ class BatchedBoundingBoxes:
             format=self._format,
             normalized=False,
             image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
         )
 
     def denormalize(self) -> Self:
@@ -214,6 +246,7 @@ class BatchedBoundingBoxes:
             format=self._format,
             normalized=False,
             image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
         )
 
     def convert(
@@ -305,6 +338,7 @@ class BatchedBoundingBoxes:
             format=BoundingBoxFormat.XYXY,
             normalized=boxes1._normalized,
             image_sizes=boxes1._image_sizes,
+            num_boxes_per_image=boxes1._num_boxes,
         )
 
     def intersection(self, other: Self) -> Self:
@@ -322,6 +356,7 @@ class BatchedBoundingBoxes:
             format=BoundingBoxFormat.XYWH,
             normalized=boxes1._normalized,
             image_sizes=boxes1._image_sizes,
+            num_boxes_per_image=boxes1._num_boxes,
         )
 
     def union_area(self, other: Self) -> Tensor[Literal["B N"], float]:
@@ -389,6 +424,40 @@ class BatchedBoundingBoxes:
 
         return intersection_area / (union_area + eps)
 
+    def unbatch(self) -> tuple[BoundingBoxes, ...]:
+        """Unbatch the bounding boxes into a list of bounding boxes."""
+        return tuple(self[i] for i in range(len(self)))
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __getitem__(self, index: int) -> BoundingBoxes:
+        """Get the bounding boxes for the given index."""
+        coordinates = self._coordinates[index][: self._num_boxes[index]]
+
+        return BoundingBoxes(
+            coordinates=coordinates,
+            format=self._format,
+            normalized=self._normalized,
+            image_size=self._image_sizes[index],
+        )
+
+    def __len__(self) -> int:
+        """Get the batch size."""
+        return len(self._coordinates)
+
+    def __str__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"shape=({len(self), self._coordinates.shape[1]}), "
+            f"format={self._format}, "
+            f"normalized={self._normalized}, "
+        )
+
+    def __repr__(self) -> str:
+        return str(self)
+
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
@@ -412,9 +481,4 @@ class BatchedBoundingBoxes:
     # Private fields
     # ----------------------------------------------------------------------- #
 
-    __slots__ = ("_coordinates", "_format", "_normalized", "_image_sizes")
-
-
-# --------------------------------------------------------------------------- #
-# Private helper functions
-# --------------------------------------------------------------------------- #
+    __slots__ = ("_coordinates", "_format", "_normalized", "_image_sizes", "_num_boxes")
