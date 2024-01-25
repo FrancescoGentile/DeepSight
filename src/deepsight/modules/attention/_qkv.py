@@ -2,11 +2,13 @@
 ##
 ##
 
-from typing import Literal, Protocol
+import abc
+from typing import Literal
 
 import torch
 from torch import nn
 
+from deepsight.modules import Module
 from deepsight.typing import Tensor
 
 # --------------------------------------------------------------------------- #
@@ -14,7 +16,7 @@ from deepsight.typing import Tensor
 # --------------------------------------------------------------------------- #
 
 
-class QKVGenerator(Protocol):
+class QKVGenerator(Module, abc.ABC):
     """Interface for a generator of queries, keys and values.
 
     The classes implementing this protocol are used to generate queries, keys and
@@ -25,15 +27,18 @@ class QKVGenerator(Protocol):
     """
 
     @property
+    @abc.abstractmethod
     def num_heads(self) -> int:
         """The number of heads."""
         ...
 
     @property
+    @abc.abstractmethod
     def head_dim(self) -> int:
         """The dimension of the hidden space of each head."""
         ...
 
+    @abc.abstractmethod
     def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
@@ -57,7 +62,7 @@ class QKVGenerator(Protocol):
         ...
 
 
-class LinearQKVGenerator(nn.Module, QKVGenerator):
+class LinearQKVGenerator(QKVGenerator):
     """A generator of queries, keys and values.
 
     This class implements the `QKVGenerator` protocol. It generates queries, keys and
@@ -113,10 +118,10 @@ class LinearQKVGenerator(nn.Module, QKVGenerator):
         return self.query_proj.out_features // self.num_heads
 
     # ----------------------------------------------------------------------- #
-    # Public methods
+    # Magic methods
     # ----------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],
@@ -142,7 +147,7 @@ class LinearQKVGenerator(nn.Module, QKVGenerator):
 # --------------------------------------------------------------------------- #
 
 
-class QKVGeneratorWithPos(Protocol):
+class QKVGeneratorWithPos(Module, abc.ABC):
     """Interface for a generator of queries, keys and values with positional embeddings.
 
     The classes implementing this protocol are used to generate queries, keys and values
@@ -191,7 +196,7 @@ class QKVGeneratorWithPos(Protocol):
         ...
 
 
-class LinearQKVGeneratorWithPrePosAddition(nn.Module, QKVGeneratorWithPos):
+class LinearQKVGeneratorWithPrePosAddition(QKVGeneratorWithPos):
     """A generator of queries, keys and values with positional embeddings.
 
     This class implements the `QKVGeneratorWithPos` protocol. It generates queries,
@@ -249,10 +254,10 @@ class LinearQKVGeneratorWithPrePosAddition(nn.Module, QKVGeneratorWithPos):
         return self.query_proj.out_features // self.num_heads
 
     # ----------------------------------------------------------------------- #
-    # Public methods
+    # Magic methods
     # ----------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],
@@ -275,7 +280,7 @@ class LinearQKVGeneratorWithPrePosAddition(nn.Module, QKVGeneratorWithPos):
         return query, key, value
 
 
-class LinearQKVGeneratorWithPostPosAddition(nn.Module, QKVGeneratorWithPos):
+class LinearQKVGeneratorWithPostPosAddition(QKVGeneratorWithPos):
     """A generator of queries, keys and values with positional embeddings.
 
     This class implements the `QKVGeneratorWithPos` protocol. It generates queries,
@@ -355,10 +360,10 @@ class LinearQKVGeneratorWithPostPosAddition(nn.Module, QKVGeneratorWithPos):
         return self.query_proj.out_features // self.num_heads
 
     # ----------------------------------------------------------------------- #
-    # Public methods
+    # Magic methods
     # ----------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],
@@ -381,7 +386,7 @@ class LinearQKVGeneratorWithPostPosAddition(nn.Module, QKVGeneratorWithPos):
         return query, key, value
 
 
-class LinearQKVGeneratorWithPrePosConcat(nn.Module, QKVGeneratorWithPos):
+class LinearQKVGeneratorWithPrePosConcat(QKVGeneratorWithPos):
     """A generator of queries, keys and values with positional embeddings.
 
     This class implements the `QKVGeneratorWithPos` protocol. It generates queries,
@@ -443,10 +448,10 @@ class LinearQKVGeneratorWithPrePosConcat(nn.Module, QKVGeneratorWithPos):
         return self.query_proj.out_features // self.num_heads
 
     # ----------------------------------------------------------------------- #
-    # Public methods
+    # Magic methods
     # ----------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],
@@ -469,7 +474,7 @@ class LinearQKVGeneratorWithPrePosConcat(nn.Module, QKVGeneratorWithPos):
         return query, key, value
 
 
-class LinearQKVGeneratorWithPostPosConcat(nn.Module, QKVGeneratorWithPos):
+class LinearQKVGeneratorWithPostPosConcat(QKVGeneratorWithPos):
     """A generator of queries, keys and values with positional embeddings.
 
     This class implements the `QKVGeneratorWithPos` protocol. It generates queries,
@@ -548,10 +553,10 @@ class LinearQKVGeneratorWithPostPosConcat(nn.Module, QKVGeneratorWithPos):
         return self.query_proj.out_features // self.num_heads
 
     # ----------------------------------------------------------------------- #
-    # Public methods
+    # Magic methods
     # ----------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],

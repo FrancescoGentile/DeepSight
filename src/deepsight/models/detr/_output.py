@@ -3,13 +3,13 @@
 ##
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Self
 
-from deepsight.typing import Tensor
+from deepsight.typing import Detachable, Tensor
 
 
 @dataclass(frozen=True)
-class Output:
+class Output(Detachable):
     """Output of DETR model.
 
     Attributes:
@@ -23,3 +23,10 @@ class Output:
     class_logits: Tensor[Literal["L B Q C"], float]
     box_coords: Tensor[Literal["L B Q 4"], float]
     image_sizes: tuple[tuple[int, int], ...]
+
+    def detach(self) -> Self:
+        return self.__class__(
+            self.class_logits.detach(),
+            self.box_coords.detach(),
+            self.image_sizes,
+        )

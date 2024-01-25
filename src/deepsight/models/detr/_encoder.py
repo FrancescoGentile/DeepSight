@@ -6,13 +6,13 @@ from typing import Literal
 
 from torch import nn
 
-from deepsight.layers import FFN, attention
+from deepsight.modules import FFN, Module, attention
 from deepsight.typing import Tensor
 
 from ._config import Config
 
 
-class Encoder(nn.Module):
+class Encoder(Module):
     """The visual encoder of DETR model."""
 
     def __init__(self, config: Config) -> None:
@@ -27,17 +27,6 @@ class Encoder(nn.Module):
             if config.encoder_post_norm
             else nn.Identity()
         )
-
-    def forward(
-        self,
-        features: Tensor[Literal["B HW D"], float],
-        pos_embed: Tensor[Literal["B HW D"], float],
-        mask: attention.Mask | None = None,
-    ) -> Tensor[Literal["B HW D"], float]:
-        for layer in self.layers:
-            features = layer(features, pos_embed, mask=mask)
-
-        return self.post_layer_norm(features)
 
     def __call__(
         self,
@@ -55,10 +44,13 @@ class Encoder(nn.Module):
         Returns:
             The encoded image features.
         """
-        return super().__call__(features, pos_embed, mask=mask)
+        for layer in self.layers:
+            features = layer(features, pos_embed, mask=mask)
+
+        return self.post_layer_norm(features)
 
 
-class EncoderLayer(nn.Module):
+class EncoderLayer(Module):
     """Encoder layer of DETR model."""
 
     def __init__(self, config: Config) -> None:
@@ -91,7 +83,7 @@ class EncoderLayer(nn.Module):
         )
         self.ffn_norm = nn.LayerNorm(config.embedding_dim)
 
-    def forward(
+    def __call__(
         self,
         x: Tensor[Literal["B L D"], float],
         pos_embed: Tensor[Literal["B L D"], float],
@@ -111,11 +103,3 @@ class EncoderLayer(nn.Module):
         x = self.ffn_norm(x + ffn_x)
 
         return x
-
-    def __call__(
-        self,
-        x: Tensor[Literal["B L D"], float],
-        pos_embed: Tensor[Literal["B L D"], float],
-        mask: attention.Mask | None,
-    ) -> Tensor[Literal["B L D"], float]:
-        return super().__call__(x, pos_embed, mask=mask)

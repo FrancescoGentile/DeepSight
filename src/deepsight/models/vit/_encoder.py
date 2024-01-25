@@ -11,14 +11,19 @@ import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
 from deepsight import utils
-from deepsight.layers import ConvPatchify, LayerScale, LearnedImagePositionEmbedding
+from deepsight.modules import (
+    ConvPatchify,
+    LayerScale,
+    LearnedImagePositionEmbedding,
+    Module,
+)
 from deepsight.structures import BatchedImages, BatchedSequences
 from deepsight.typing import Tensor
 
 from ._config import EncoderConfig
 
 
-class Encoder(nn.Module):
+class Encoder(Module):
     """Vision Transformer Encoder."""
 
     def __init__(self, config: EncoderConfig) -> None:
@@ -209,23 +214,17 @@ class Encoder(nn.Module):
 
         return outputs
 
-    def forward(
-        self,
-        images: BatchedImages,
-    ) -> BatchedSequences:
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __call__(self, images: BatchedImages) -> BatchedSequences:
         return self.get_intermediate_outputs(
             images,
             return_layers=-1,
             apply_post_norm=True,
             remove_prefix_tokens=False,
         )[-1]
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __call__(self, x: BatchedImages) -> BatchedSequences:
-        return super().__call__(x)
 
     # ----------------------------------------------------------------------- #
     # Private Methods

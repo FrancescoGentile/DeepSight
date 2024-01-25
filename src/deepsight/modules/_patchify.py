@@ -11,10 +11,11 @@ from torch import nn
 from deepsight import utils
 from deepsight.structures import BatchedImages
 
+from ._module import Module
 from ._norm import ImageNorm
 
 
-class ConvPatchify(nn.Module):
+class ConvPatchify(Module):
     """Extract patches from images using a convolutional layer."""
 
     def __init__(
@@ -56,6 +57,7 @@ class ConvPatchify(nn.Module):
 
     @property
     def patch_size(self) -> tuple[int, int]:
+        """The spatial size (h, w) of the patches to extract."""
         return self._patch_size
 
     # ----------------------------------------------------------------------- #
@@ -70,7 +72,11 @@ class ConvPatchify(nn.Module):
             (input_shape[1] + self.patch_size[1] - 1) // self.patch_size[1],
         )
 
-    def forward(self, x: BatchedImages) -> BatchedImages:
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __call__(self, x: BatchedImages) -> BatchedImages:
         H, W = x.shape[-2:]  # noqa: N806
         pad_h = (self.patch_size[0] - H % self.patch_size[0]) % self.patch_size[0]
         pad_w = (self.patch_size[1] - W % self.patch_size[1]) % self.patch_size[1]
@@ -88,10 +94,3 @@ class ConvPatchify(nn.Module):
                 self.compute_output_shape(image_size) for image_size in x.image_sizes
             ),
         )
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __call__(self, x: BatchedImages) -> BatchedImages:
-        return super().__call__(x)

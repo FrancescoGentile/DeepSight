@@ -2,17 +2,18 @@
 ##
 ##
 
-from typing import Literal, Protocol
+import abc
+from typing import Literal
 
 import torch.nn.functional as F  # noqa: N812
-from torch import nn
 
+from deepsight.modules import Module
 from deepsight.typing import Tensor
 
 from ._mask import Mask
 
 
-class AttentionMechanism(Protocol):
+class AttentionMechanism(Module, abc.ABC):
     """Interface for classes implementing attention mechanisms.
 
     The classes implementing this interface are responsible for computing
@@ -21,6 +22,7 @@ class AttentionMechanism(Protocol):
     computed attention scores to produce the output tensor.
     """
 
+    @abc.abstractmethod
     def __call__(
         self,
         query: Tensor[Literal["B H Q D"], float],
@@ -30,7 +32,7 @@ class AttentionMechanism(Protocol):
     ) -> Tensor[Literal["B H Q D"], float]: ...
 
 
-class ScaledDotProductAttention(nn.Module, AttentionMechanism):
+class ScaledDotProductAttention(AttentionMechanism):
     """Scaled dot product attention module.
 
     This module computes the scaled dot product attention between the query
@@ -53,7 +55,7 @@ class ScaledDotProductAttention(nn.Module, AttentionMechanism):
         self.dropout = dropout
         self.scale = scale
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B H Q D"], float],
         key: Tensor[Literal["B H K D"], float],

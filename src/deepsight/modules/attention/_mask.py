@@ -8,8 +8,6 @@ import torch
 
 from deepsight.typing import Moveable, Tensor
 
-# make the class MultiHeadAttentionLayer more modular
-
 
 class Mask(Moveable):
     r"""Mask used when computing attention scores.

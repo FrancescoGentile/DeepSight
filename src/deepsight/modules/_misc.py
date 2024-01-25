@@ -9,8 +9,10 @@ from torch import nn
 
 from deepsight.typing import Tensor
 
+from ._module import Module
 
-class LayerScale(nn.Module):
+
+class LayerScale(Module):
     def __init__(
         self,
         dim: int,
@@ -22,5 +24,7 @@ class LayerScale(nn.Module):
         self.inplace = inplace
         self.gamma = nn.Parameter(torch.full((dim,), init_value))
 
-    def forward(self, x: Tensor[Literal["*"], float]) -> Tensor[Literal["*"], float]:
+    def __call__(
+        self, x: Tensor[Literal["..."], float]
+    ) -> Tensor[Literal["..."], float]:
         return x.mul_(self.gamma) if self.inplace else x * self.gamma

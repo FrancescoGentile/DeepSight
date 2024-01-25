@@ -3,13 +3,11 @@
 ##
 
 import enum
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Self
 
-from deepsight.layers import FrozenBatchNorm2d
 from deepsight.models import resnet
-from deepsight.structures import BatchedImages
+from deepsight.modules import Backbone, FrozenBatchNorm2d
 from deepsight.typing import str_enum
 
 
@@ -24,8 +22,7 @@ class Variant(enum.Enum):
 class Config:
     """Configuration for DETR model."""
 
-    backbone: Callable[[BatchedImages], BatchedImages]
-    feature_dim: int
+    backbone: Backbone
     num_classes: int
     num_queries: int = 100
     embedding_dim: int = 256
@@ -57,7 +54,6 @@ class Config:
                 backbone = resnet.Encoder(res_config)
                 return cls(
                     backbone=backbone,
-                    feature_dim=2048,
                     num_classes=num_classes,
                     threshold=threshold,
                 )

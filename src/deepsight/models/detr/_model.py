@@ -7,8 +7,8 @@ from torch import nn
 
 from deepsight.data import Batch
 from deepsight.data.object_detection import Annotation, Prediction, Sample
-from deepsight.layers import SinusoidalImagePositionEmbedding, attention
 from deepsight.models import Model as _Model
+from deepsight.modules import SinusoidalImagePositionEmbedding, attention
 from deepsight.structures import BatchedImages, BoundingBoxes, BoundingBoxFormat
 
 from ._config import Config
@@ -24,7 +24,11 @@ class Model(_Model[Sample, Output, Annotation, Prediction]):
         super().__init__()
 
         self.backbone = config.backbone
-        self.input_proj = nn.Conv2d(config.feature_dim, config.embedding_dim, 1)
+        self.input_proj = nn.Conv2d(
+            in_channels=self.backbone.get_stages_info()[-1].out_channels,
+            out_channels=config.embedding_dim,
+            kernel_size=1,
+        )
 
         self.position_embedding = SinusoidalImagePositionEmbedding(
             embed_dim=config.embedding_dim,
@@ -49,13 +53,13 @@ class Model(_Model[Sample, Output, Annotation, Prediction]):
 
         self.threshold = config.threshold
 
-    def forward(
+    def __call__(
         self,
         samples: Batch[Sample],
-        annotations: Batch[Annotation] | None,
+        annotations: Batch[Annotation] | None = None,
     ) -> Output:
         images = BatchedImages.batch([s.image.data for s in samples])
-        features = self.backbone(images)
+        features = self.backbone(images, return_stages=(-1,))[-1]
         features = features.new_with(data=self.input_proj(features.data))
 
         pos_embeds = self.position_embedding(features)

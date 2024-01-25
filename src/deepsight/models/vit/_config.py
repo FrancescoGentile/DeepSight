@@ -10,7 +10,7 @@ from typing import Self
 
 from torch import nn
 
-from deepsight.layers import SequenceNorm
+from deepsight.modules import SequenceNorm
 from deepsight.typing import str_enum
 
 

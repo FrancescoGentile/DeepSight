@@ -10,9 +10,10 @@ from torch import nn
 from deepsight.typing import Tensor
 
 from ._activations import Activation
+from ._module import Module
 
 
-class FFN(nn.Module):
+class FFN(Module):
     """A position-wise feed-forward network."""
 
     def __init__(
@@ -54,11 +55,6 @@ class FFN(nn.Module):
 
         self.layers = nn.Sequential(*layers)
 
-    def forward(
-        self, x: Tensor[Literal["... L D"], float]
-    ) -> Tensor[Literal["... L D"], float]:
-        return self.layers(x)
-
     def __call__(
         self, x: Tensor[Literal["... L D"], float]
     ) -> Tensor[Literal["... L D"], float]:
@@ -70,4 +66,4 @@ class FFN(nn.Module):
         Returns:
             The output tensor.
         """
-        return super().__call__(x)
+        return self.layers(x)

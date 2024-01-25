@@ -10,7 +10,7 @@ from typing import Self
 
 from torch import nn
 
-from deepsight.layers import Activation, ImageNorm
+from deepsight.modules import Activation, ImageNorm
 from deepsight.typing import str_enum
 
 from ._blocks import BasicBlock, Bottleneck

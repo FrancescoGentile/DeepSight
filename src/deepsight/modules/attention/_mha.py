@@ -8,7 +8,7 @@ from typing import Literal
 import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
-from deepsight.layers import SequenceNorm
+from deepsight.modules import Module, SequenceNorm
 from deepsight.typing import Tensor
 
 from ._mask import Mask
@@ -20,7 +20,7 @@ from ._qkv import QKVGenerator, QKVGeneratorWithPos
 # -------------------------------------------------------------------------- #
 
 
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention(Module):
     """Multi-head attention module."""
 
     # ---------------------------------------------------------------------- #
@@ -73,16 +73,28 @@ class MultiHeadAttention(nn.Module):
         self.k_norm = k_norm(qkv_generator.head_dim) if callable(k_norm) else k_norm
 
     # ---------------------------------------------------------------------- #
-    # Public Methods
+    # Magic Methods
     # ---------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],
         value: Tensor[Literal["B K Dv"], float],
         mask: Mask | None = None,
     ) -> Tensor[Literal["B Q D"], float]:
+        """Performs a forward pass through the multi-head attention module.
+
+        Args:
+            query: The input tensor used to generate the query.
+            key: The input tensor used to generate the key.
+            value: The input tensor used to generate the value.
+            mask: The attention mask to apply to the attention scores. If `None`,
+                no mask is applied.
+
+        Returns:
+            The output tensor.
+        """
         query, key, value = self.qkv_generator(query, key, value)
 
         match self.q_norm:
@@ -115,38 +127,13 @@ class MultiHeadAttention(nn.Module):
 
         return output
 
-    # ---------------------------------------------------------------------- #
-    # Magic Methods
-    # ---------------------------------------------------------------------- #
-
-    def __call__(
-        self,
-        query: Tensor[Literal["B Q Dq"], float],
-        key: Tensor[Literal["B K Dk"], float],
-        value: Tensor[Literal["B K Dv"], float],
-        mask: Mask | None = None,
-    ) -> Tensor[Literal["B Q D"], float]:
-        """Performs a forward pass through the multi-head attention module.
-
-        Args:
-            query: The input tensor used to generate the query.
-            key: The input tensor used to generate the key.
-            value: The input tensor used to generate the value.
-            mask: The attention mask to apply to the attention scores. If `None`,
-                no mask is applied.
-
-        Returns:
-            The output tensor.
-        """
-        return super().__call__(query, key, value, mask=mask)
-
 
 # -------------------------------------------------------------------------- #
 # Multi-head attention modules with positional embeddings
 # -------------------------------------------------------------------------- #
 
 
-class MultiHeadAttentionWithPos(nn.Module):
+class MultiHeadAttentionWithPos(Module):
     """Multi-head attention module with positional embeddings."""
 
     # ---------------------------------------------------------------------- #
@@ -179,10 +166,10 @@ class MultiHeadAttentionWithPos(nn.Module):
         self.k_norm = k_norm(qkv_generator.head_dim) if callable(k_norm) else k_norm
 
     # ---------------------------------------------------------------------- #
-    # Public Methods
+    # Magic Methods
     # ---------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
         key: Tensor[Literal["B K Dk"], float],
@@ -191,6 +178,20 @@ class MultiHeadAttentionWithPos(nn.Module):
         key_pos: Tensor[Literal["B K Dkp"], float],
         mask: Mask | None = None,
     ) -> Tensor[Literal["B Q D"], float]:
+        """Performs a forward pass through the multi-head attention module.
+
+        Args:
+            query: The input tensor used to generate the query.
+            key: The input tensor used to generate the key.
+            value: The input tensor used to generate the value.
+            query_pos: The positional embedding of the query.
+            key_pos: The positional embedding of the key.
+            mask: The attention mask to apply to the attention scores. If `None`,
+                no mask is applied.
+
+        Returns:
+            The output tensor.
+        """
         query, key, value = self.qkv_generator(query, key, value, query_pos, key_pos)
 
         match self.q_norm:
@@ -222,32 +223,3 @@ class MultiHeadAttentionWithPos(nn.Module):
         output = self.out_dropout(output)
 
         return output
-
-    # ---------------------------------------------------------------------- #
-    # Magic Methods
-    # ---------------------------------------------------------------------- #
-
-    def __call__(
-        self,
-        query: Tensor[Literal["B Q Dq"], float],
-        key: Tensor[Literal["B K Dk"], float],
-        value: Tensor[Literal["B K Dv"], float],
-        query_pos: Tensor[Literal["B Q Dqp"], float],
-        key_pos: Tensor[Literal["B K Dkp"], float],
-        mask: Mask | None = None,
-    ) -> Tensor[Literal["B Q D"], float]:
-        """Performs a forward pass through the multi-head attention module.
-
-        Args:
-            query: The input tensor used to generate the query.
-            key: The input tensor used to generate the key.
-            value: The input tensor used to generate the value.
-            query_pos: The positional embedding of the query.
-            key_pos: The positional embedding of the key.
-            mask: The attention mask to apply to the attention scores. If `None`,
-                no mask is applied.
-
-        Returns:
-            The output tensor.
-        """
-        return super().__call__(query, key, value, query_pos, key_pos, mask=mask)

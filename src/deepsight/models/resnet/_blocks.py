@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from torch import nn
 
-from deepsight.layers import Activation, ImageNorm
+from deepsight.modules import Activation, ImageNorm
 from deepsight.structures import BatchedImages
 
 # --------------------------------------------------------------------------- #
@@ -35,6 +35,7 @@ class BasicBlock(nn.Module):
         super().__init__()
 
         self.stride = stride
+        self.out_channels = out_channels
 
         self.conv1 = nn.Conv2d(
             in_channels,
@@ -139,6 +140,7 @@ class Bottleneck(nn.Module):
         hidden_channels = int(out_channels * (base_channels / 64.0)) * groups
 
         self.stride = stride
+        self.out_channels = out_channels * self.expansion
 
         self.conv1 = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, bias=False)
         self.norm1 = norm_layer(hidden_channels)

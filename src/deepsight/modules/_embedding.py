@@ -12,8 +12,10 @@ from deepsight import utils
 from deepsight.structures import BatchedImages
 from deepsight.typing import Tensor
 
+from ._module import Module
 
-class LearnedImagePositionEmbedding(nn.Module):
+
+class LearnedImagePositionEmbedding(Module):
     """Learned position embedding for images."""
 
     def __init__(
@@ -49,10 +51,10 @@ class LearnedImagePositionEmbedding(nn.Module):
         self.embeddings = nn.Parameter(embeds * init_scale)
 
     # ----------------------------------------------------------------------- #
-    # Public Methods
+    # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    def forward(self, x: BatchedImages) -> BatchedImages:
+    def __call__(self, x: BatchedImages) -> BatchedImages:
         if not x.is_padded():
             h, w = x.shape[-2:]
             pos_embeds = self._resize((h, w)).expand(len(x), -1, -1, -1)
@@ -67,13 +69,6 @@ class LearnedImagePositionEmbedding(nn.Module):
                 pos_embeds_list.append(pos_embeds_cache[(h, w)])
 
             return BatchedImages.batch(pos_embeds_list)
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __call__(self, x: BatchedImages) -> BatchedImages:
-        return super().__call__(x)
 
     # ----------------------------------------------------------------------- #
     # Private Methods
@@ -105,7 +100,7 @@ class LearnedImagePositionEmbedding(nn.Module):
 # https://github.com/IDEA-Research/detrex/blob/main/detrex/layers/position_embedding.py
 
 
-class SinusoidalImagePositionEmbedding(nn.Module):
+class SinusoidalImagePositionEmbedding(Module):
     """Sinusoidal position embedding for images."""
 
     def __init__(
@@ -152,10 +147,10 @@ class SinusoidalImagePositionEmbedding(nn.Module):
         self.xy_order: Literal["xy", "yx"] = xy_order
 
     # ----------------------------------------------------------------------- #
-    # Public Methods
+    # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    def forward(self, images: BatchedImages) -> BatchedImages:
+    def __call__(self, images: BatchedImages) -> BatchedImages:
         B, _, H, W = images.shape  # noqa: N806
 
         if not images.is_padded():
@@ -198,10 +193,3 @@ class SinusoidalImagePositionEmbedding(nn.Module):
 
         out = out.permute(0, 3, 1, 2)
         return images.new_with(data=out)
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __call__(self, images: BatchedImages) -> BatchedImages:
-        return super().__call__(images)

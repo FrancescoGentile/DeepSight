@@ -7,36 +7,36 @@ from collections.abc import Iterable
 
 from torch import nn
 
-from deepsight import utils
+from deepsight.modules import Backbone
 from deepsight.structures import BatchedImages
 
 from ._blocks import BasicBlock, Bottleneck
 from ._config import EncoderConfig
 
 
-class Encoder(nn.Module):
+class Encoder(Backbone):
     """ResNet encoder."""
 
     def __init__(self, config: EncoderConfig) -> None:
         super().__init__()
 
-        stem_width = 64
+        self.stem_width = 64
         self.conv1 = nn.Conv2d(
             config.in_channels,
-            stem_width,
+            self.stem_width,
             kernel_size=7,
             stride=2,
             padding=3,
             bias=False,
         )
-        self.norm1 = config.norm_layer(stem_width)
+        self.norm1 = config.norm_layer(self.stem_width)
         self.act1 = config.act_layer()
 
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.layers = nn.ModuleList()
 
-        in_channels = stem_width
+        in_channels = self.stem_width
         out_channels = [64, 128, 256, 512]
         for num_blocks, out_channel in zip(
             config.blocks_per_layer, out_channels, strict=True
@@ -55,31 +55,32 @@ class Encoder(nn.Module):
     # Public methods
     # ----------------------------------------------------------------------- #
 
-    def get_intermediate_outputs(
+    def get_stages_info(self) -> tuple[Backbone.StageInfo, ...]:
+        stages = [Backbone.StageInfo("stem", self.stem_width)]
+        for idx, layer in enumerate(self.layers):
+            stages.append(Backbone.StageInfo(f"layer{idx + 1}", layer[-1].out_channels))  # type: ignore
+
+        return tuple(stages)
+
+    # ----------------------------------------------------------------------- #
+    # Magic methods
+    # ----------------------------------------------------------------------- #
+
+    def __call__(
         self,
         images: BatchedImages,
-        return_layers: int | Iterable[int] = -1,
+        *,
+        return_stages: Iterable[str | int] = (-1,),
     ) -> tuple[BatchedImages, ...]:
-        """Returns intermediate outputs of the encoder.
+        stages = self.get_stages_info()
+        return_stages = [
+            stage if isinstance(stage, str) else stages[stage].name
+            for stage in return_stages
+        ]
+        return_stages_set = set(return_stages)
 
-        Args:
-            images: Batched images.
-            return_layers: Indices of layers to return. The indices can be negative,
-                in which case the layers are counted from the end.
+        stages = {}
 
-        Returns:
-            Intermediate outputs of the encoder.
-        """
-        return_layers = utils.to_tuple(return_layers)
-        indices = {idx if idx >= 0 else len(self.layers) + idx for idx in return_layers}
-        for idx in indices:
-            if idx < 0 or idx >= len(self.layers):
-                raise IndexError(
-                    f"Index {idx} is out of range for the encoder with "
-                    f"{len(self.layers)} layers."
-                )
-
-        outputs = []
         x = images.data
         x = self.conv1(x)
         x = self.norm1(x)
@@ -94,22 +95,20 @@ class Encoder(nn.Module):
             )
             out = BatchedImages(x, new_image_sizes)
 
+        stages["stem"] = out
         for idx, layer in enumerate(self.layers):
             out = layer(out)
-            if idx in indices:
-                outputs.append(out)
+            name = f"layer{idx + 1}"
+            # we make this check to avoid storing in memory the output of layers
+            # that are not returned
+            if name in return_stages_set:
+                stages[name] = out
+
+        outputs = []
+        for stage in return_stages:
+            outputs.append(stages[stage])
 
         return tuple(outputs)
-
-    def forward(self, images: BatchedImages) -> BatchedImages:
-        return self.get_intermediate_outputs(images, return_layers=-1)[-1]
-
-    # ----------------------------------------------------------------------- #
-    # Magic methods
-    # ----------------------------------------------------------------------- #
-
-    def __call__(self, images: BatchedImages) -> BatchedImages:
-        return super().__call__(images)
 
     # ----------------------------------------------------------------------- #
     # Private methods

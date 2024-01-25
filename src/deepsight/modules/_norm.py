@@ -9,6 +9,8 @@ from torch import nn
 
 from deepsight.typing import StateDict, Tensor
 
+from ._module import Module
+
 # --------------------------------------------------------------------------- #
 # Sequence normalization layers
 # --------------------------------------------------------------------------- #
@@ -23,7 +25,7 @@ class SequenceNorm(Protocol):
     """
 
     def __call__(
-        self, x: Tensor[Literal["... L D"], float], /
+        self, x: Tensor[Literal["... L D"], float]
     ) -> Tensor[Literal["... L D"], float]: ...
 
 
@@ -41,11 +43,11 @@ class ImageNorm(Protocol):
     """
 
     def __call__(
-        self, x: Tensor[Literal["B C H W"], float], /
+        self, x: Tensor[Literal["B C H W"], float]
     ) -> Tensor[Literal["B C H W"], float]: ...
 
 
-class LayerNorm2D(nn.Module, ImageNorm):
+class LayerNorm2D(Module):
     r"""Layer normalization for images.
 
     Applies layer normalization over a mini-batch of images as in the
@@ -93,7 +95,11 @@ class LayerNorm2D(nn.Module, ImageNorm):
 
         self.eps = eps
 
-    def forward(
+    # ----------------------------------------------------------------------- #
+    # Magic methods
+    # ----------------------------------------------------------------------- #
+
+    def __call__(
         self, x: Tensor[Literal["B C H W"], float]
     ) -> Tensor[Literal["B C H W"], float]:
         mean = x.mean(1, keepdim=True)
@@ -113,7 +119,7 @@ class LayerNorm2D(nn.Module, ImageNorm):
 # https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py
 
 
-class FrozenBatchNorm2d(nn.Module, ImageNorm):
+class FrozenBatchNorm2d(Module):
     """BatchNorm2d where the batch statistics and the affine parameters are fixed."""
 
     def __init__(self, num_features: int, eps: float = 1e-5) -> None:
@@ -138,10 +144,10 @@ class FrozenBatchNorm2d(nn.Module, ImageNorm):
         self.running_var: torch.Tensor
 
     # ----------------------------------------------------------------------- #
-    # Public methods
+    # Magic methods
     # ----------------------------------------------------------------------- #
 
-    def forward(
+    def __call__(
         self, x: Tensor[Literal["B C H W"], float]
     ) -> Tensor[Literal["B C H W"], float]:
         w = self.weight.reshape(1, -1, 1, 1)

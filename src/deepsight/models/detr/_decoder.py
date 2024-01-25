@@ -7,13 +7,13 @@ from typing import Literal
 import torch
 from torch import nn
 
-from deepsight.layers import FFN, attention
+from deepsight.modules import FFN, Module, attention
 from deepsight.typing import Tensor
 
 from ._config import Config
 
 
-class Decoder(nn.Module):
+class Decoder(Module):
     """The transformer decoder of DETR model."""
 
     def __init__(self, config: Config) -> None:
@@ -28,21 +28,6 @@ class Decoder(nn.Module):
             if config.decoder_post_norm
             else nn.Identity()
         )
-
-    def forward(
-        self,
-        query: Tensor[Literal["B Q D"], float],
-        memory: Tensor[Literal["B HW D"], float],
-        query_pos: Tensor[Literal["B Q D"], float],
-        memory_pos: Tensor[Literal["B HW D"], float],
-        memory_mask: attention.Mask | None = None,
-    ) -> Tensor[Literal["L B Q D"], float]:
-        outputs = []
-        for layer in self.layers:
-            query = layer(query, memory, query_pos, memory_pos, memory_mask=memory_mask)
-            outputs.append(query)
-
-        return self.post_layer_norm(torch.stack(outputs))
 
     def __call__(
         self,
@@ -67,16 +52,15 @@ class Decoder(nn.Module):
             The decoder outputs stacked along the first dimension. Each decoder output
             consists of the object queries after each decoder layer.
         """
-        return super().__call__(
-            query,
-            memory,
-            query_pos,
-            memory_pos,
-            memory_mask=memory_mask,
-        )
+        outputs = []
+        for layer in self.layers:
+            query = layer(query, memory, query_pos, memory_pos, memory_mask=memory_mask)
+            outputs.append(query)
+
+        return self.post_layer_norm(torch.stack(outputs))
 
 
-class DecoderLayer(nn.Module):
+class DecoderLayer(Module):
     """Decoder layer of DETR model."""
 
     def __init__(self, config: Config) -> None:
@@ -123,7 +107,7 @@ class DecoderLayer(nn.Module):
         )
         self.ffn_norm = nn.LayerNorm(config.embedding_dim)
 
-    def forward(
+    def __call__(
         self,
         query: Tensor[Literal["B Q D"], float],
         memory: Tensor[Literal["B HW D"], float],
@@ -154,19 +138,3 @@ class DecoderLayer(nn.Module):
         query = self.ffn_norm(query + ffn_query)
 
         return query
-
-    def __call__(
-        self,
-        query: Tensor[Literal["B Q D"], float],
-        memory: Tensor[Literal["B HW D"], float],
-        query_pos: Tensor[Literal["B Q D"], float],
-        memory_pos: Tensor[Literal["B HW D"], float],
-        memory_mask: attention.Mask | None = None,
-    ) -> Tensor[Literal["B Q D"], float]:
-        return super().__call__(
-            query,
-            memory,
-            query_pos,
-            memory_pos,
-            memory_mask=memory_mask,
-        )
