@@ -78,7 +78,7 @@ class Model(_Model[Sample, Output, Annotation, Prediction]):
             memory=features,
             query_pos=query_embeds,
             memory_pos=flattened_pos_embeds.data,
-            mask=mask,
+            memory_mask=mask,
         )
 
         class_logits = self.class_head(queries)

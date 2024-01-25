@@ -35,11 +35,11 @@ class Decoder(nn.Module):
         memory: Tensor[Literal["B HW D"], float],
         query_pos: Tensor[Literal["B Q D"], float],
         memory_pos: Tensor[Literal["B HW D"], float],
-        mask: attention.Mask | None = None,
+        memory_mask: attention.Mask | None = None,
     ) -> Tensor[Literal["L B Q D"], float]:
         outputs = []
         for layer in self.layers:
-            query = layer(query, memory, query_pos, memory_pos, mask=mask)
+            query = layer(query, memory, query_pos, memory_pos, memory_mask=memory_mask)
             outputs.append(query)
 
         return self.post_layer_norm(torch.stack(outputs))
@@ -50,7 +50,7 @@ class Decoder(nn.Module):
         memory: Tensor[Literal["B HW D"], float],
         query_pos: Tensor[Literal["B Q D"], float],
         memory_pos: Tensor[Literal["B HW D"], float],
-        mask: attention.Mask | None = None,
+        memory_mask: attention.Mask | None = None,
     ) -> Tensor[Literal["L B Q D"], float]:
         """Forward pass through the decoder.
 
@@ -59,13 +59,21 @@ class Decoder(nn.Module):
             memory: The encoded image features.
             query_pos: The positional embeddings for the object queries.
             memory_pos: The positional embeddings for the image features.
-            mask: The attention mask for the cross-attention.
+            memory_mask: The attention mask for the cross-attention. This is used to
+                prevent the decoder from attending to the padding tokens in the image
+                features.
 
         Returns:
             The decoder outputs stacked along the first dimension. Each decoder output
             consists of the object queries after each decoder layer.
         """
-        return super().__call__(query, memory, query_pos, memory_pos, mask=mask)
+        return super().__call__(
+            query,
+            memory,
+            query_pos,
+            memory_pos,
+            memory_mask=memory_mask,
+        )
 
 
 class DecoderLayer(nn.Module):
@@ -121,7 +129,7 @@ class DecoderLayer(nn.Module):
         memory: Tensor[Literal["B HW D"], float],
         query_pos: Tensor[Literal["B Q D"], float],
         memory_pos: Tensor[Literal["B HW D"], float],
-        mask: attention.Mask | None = None,
+        memory_mask: attention.Mask | None = None,
     ) -> Tensor[Literal["B Q D"], float]:
         sa_query = self.self_attn(
             query=query,
@@ -138,7 +146,7 @@ class DecoderLayer(nn.Module):
             value=memory,
             query_pos=query_pos,
             key_pos=memory_pos,
-            mask=mask,
+            mask=memory_mask,
         )
         query = self.cross_attn_norm(query + ca_query)
 
@@ -153,6 +161,12 @@ class DecoderLayer(nn.Module):
         memory: Tensor[Literal["B HW D"], float],
         query_pos: Tensor[Literal["B Q D"], float],
         memory_pos: Tensor[Literal["B HW D"], float],
-        mask: attention.Mask | None = None,
+        memory_mask: attention.Mask | None = None,
     ) -> Tensor[Literal["B Q D"], float]:
-        return super().__call__(query, memory, query_pos, memory_pos, mask=mask)
+        return super().__call__(
+            query,
+            memory,
+            query_pos,
+            memory_pos,
+            memory_mask=memory_mask,
+        )
