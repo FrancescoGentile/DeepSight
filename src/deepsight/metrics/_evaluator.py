@@ -9,15 +9,18 @@ from deepsight.data import Batch
 from deepsight.typing import Number, str_enum
 
 
+@str_enum
+class MetricType(enum.Enum):
+    """Type of a metric computed by an evaluator."""
+
+    NUMERIC = "numeric"
+    TABULAR = "tabular"
+
+
 @dataclass(frozen=True)
 class MetricInfo:
-    @str_enum
-    class Type(enum.Enum):
-        NUMERIC = "numeric"
-        TABULAR = "tabular"
-
     name: str
-    type: Type
+    type: MetricType
     higher_is_better: bool = True
 
 

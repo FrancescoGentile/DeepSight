@@ -8,15 +8,16 @@ from deepsight.data import Batch
 from deepsight.typing import Losses
 
 
+@dataclass(frozen=True)
+class LossInfo:
+    """Info of a loss computed by a criterion for a model."""
+
+    name: str
+    weight: float
+
+
 class Criterion[O, A](Protocol):
     """Interface for criteria used to compute the losses of a model."""
-
-    @dataclass(frozen=True)
-    class LossInfo:
-        """The info of a loss computed by a criterion."""
-
-        name: str
-        weight: float
 
     def get_losses_info(self) -> tuple[LossInfo, ...]:
         """Get the info of the losses computed by the criterion.
