@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (c) Facebook, Inc. and its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/facebookresearch/detectron2/blob/main/detectron2/structures/image_list.py
+# --------------------------------------------------------------------------- #
 
 import math
 from collections.abc import Sequence

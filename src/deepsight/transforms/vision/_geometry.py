@@ -1,13 +1,18 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (c) Soumith Chintala 2016. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/pytorch/vision/blob/main/torchvision/transforms/v2/_geometry.py
+# --------------------------------------------------------------------------- #
 
 from typing import overload
 
 from deepsight import utils
-from deepsight.structures import BoundingBoxes, Image
+from deepsight.structures import BoundingBoxes, Image, InterpolationMode
 from deepsight.typing import Configs
-from deepsight.utils import InterpolationMode
 
 from ._base import Transform, check_image_boxes
 
@@ -185,11 +190,11 @@ class ShortestSideResize(Transform):
 
 
 # --------------------------------------------------------------------------- #
-# Resize Longest Side
+# Horizontal Flip
 # --------------------------------------------------------------------------- #
 
 
-class HorizonalFlip(Transform):
+class HorizontalFlip(Transform):
     """Flip the input image horizontally."""
 
     def __init__(self) -> None:

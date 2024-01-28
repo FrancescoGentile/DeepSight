@@ -1,8 +1,5 @@
-##
-##
-##
-
-from __future__ import annotations
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from collections.abc import Sequence
 from typing import Literal, Self
@@ -13,10 +10,9 @@ import torch.nn.functional as F  # noqa: N812
 from PIL import Image as PILImage
 
 from deepsight.typing import Moveable, Number, PathLike, Tensor
-from deepsight.utils import InterpolationMode
 
 from . import _utils as utils
-from ._mode import ImageMode
+from ._enums import ImageMode, InterpolationMode
 
 
 class Image(Moveable):
@@ -405,10 +401,6 @@ class Image(Moveable):
 
     def __str__(self) -> str:
         return repr(self)
-
-    # ----------------------------------------------------------------------- #
-    # Private Methods
-    # ----------------------------------------------------------------------- #
 
     # ----------------------------------------------------------------------- #
     # Private fields

@@ -1,11 +1,10 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from ._base import Transform
 from ._color import ColorJitter
 from ._container import RandomApply, RandomChoice, RandomOrder, SequentialOrder
-from ._geometry import HorizonalFlip, Resize, ShortestSideResize
+from ._geometry import HorizontalFlip, Resize, ShortestSideResize
 from ._misc import Standardize, ToDtype, ToMode
 
 __all__ = [
@@ -19,7 +18,7 @@ __all__ = [
     "RandomOrder",
     "SequentialOrder",
     # _geometry
-    "HorizonalFlip",
+    "HorizontalFlip",
     "Resize",
     "ShortestSideResize",
     # _misc

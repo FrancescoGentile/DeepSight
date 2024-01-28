@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (c) 2023 PyG Team <team@pyg.org>
+# SPDX-License-Identifier: MIT
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/utils/loop.py
+# --------------------------------------------------------------------------- #
 
 from numbers import Number
 from typing import Annotated, overload

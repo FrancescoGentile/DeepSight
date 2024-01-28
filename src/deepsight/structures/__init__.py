@@ -1,12 +1,11 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from ._batched_bboxes import BatchedBoundingBoxes
 from ._batched_images import BatchedImages
 from ._batched_sequences import BatchedSequences
 from ._bboxes import BoundingBoxes, BoundingBoxFormat
-from ._image import Image, ImageMode
+from ._image import Image, ImageMode, InterpolationMode
 
 __all__ = [
     # _batched_bboxes
@@ -21,4 +20,5 @@ __all__ = [
     # _image
     "Image",
     "ImageMode",
+    "InterpolationMode",
 ]

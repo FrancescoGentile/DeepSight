@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from typing import Literal
 
@@ -13,6 +12,10 @@ from deepsight.structures import BatchedImages
 from deepsight.typing import Tensor
 
 from ._module import Module
+
+# --------------------------------------------------------------------------- #
+# Learned Embedding
+# --------------------------------------------------------------------------- #
 
 
 class LearnedImagePositionEmbedding(Module):
@@ -95,9 +98,12 @@ class LearnedImagePositionEmbedding(Module):
 # --------------------------------------------------------------------------- #
 # Sinusoidal Embedding
 # --------------------------------------------------------------------------- #
-
-# Source code taken and modified from the detrex repository:
+# Copyright 2022 The IDEA Authors. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
 # https://github.com/IDEA-Research/detrex/blob/main/detrex/layers/position_embedding.py
+# --------------------------------------------------------------------------- #
 
 
 class SinusoidalImagePositionEmbedding(Module):

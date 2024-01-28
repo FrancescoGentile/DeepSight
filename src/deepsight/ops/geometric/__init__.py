@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from ._coalesce import coalesce
 from ._loop import add_remaining_self_loops

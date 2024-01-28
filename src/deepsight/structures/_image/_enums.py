@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 import enum
 from typing import Self
@@ -52,3 +51,13 @@ class ImageMode(enum.Enum):
                 return 1
             case self.RGB:
                 return 3
+
+
+@str_enum
+class InterpolationMode(enum.Enum):
+    """Interpolation mode used to resize an image."""
+
+    NEAREST = "nearest"
+    NEAREST_EXACT = "nearest_exact"
+    BILINEAR = "bilinear"
+    BICUBIC = "bicubic"

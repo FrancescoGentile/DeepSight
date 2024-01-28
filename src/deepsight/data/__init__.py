@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from ._batch import Batch
 from ._dataloader import DataLoader

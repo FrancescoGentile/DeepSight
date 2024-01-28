@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright 2022 The IDEA Authors. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/IDEA-Research/detrex/blob/main/detrex/layers/mlp.py
+# --------------------------------------------------------------------------- #
 
 from collections.abc import Callable
 from typing import Literal

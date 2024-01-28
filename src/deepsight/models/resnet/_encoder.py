@@ -1,6 +1,12 @@
-## Source code taken and modified from torchvision
-## https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (c) Soumith Chintala 2016. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py
+# --------------------------------------------------------------------------- #
 
 import math
 from collections.abc import Iterable

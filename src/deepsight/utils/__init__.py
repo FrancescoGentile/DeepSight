@@ -1,8 +1,6 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
-from ._enums import InterpolationMode
 from ._logging import get_library_logger
 from ._misc import (
     full_class_name,
@@ -15,8 +13,6 @@ from ._reproducibility import get_rng_state, seed_all, set_rng_state
 from ._torch import is_float_tensor, is_integer_tensor
 
 __all__ = [
-    # _enums
-    "InterpolationMode",
     # _logging
     "get_library_logger",
     # _misc

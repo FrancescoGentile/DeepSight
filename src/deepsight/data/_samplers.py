@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (c) 2016-present, Facebook Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/pytorch/pytorch/blob/main/torch/utils/data/sampler.py
+# --------------------------------------------------------------------------- #
 
 import math
 from collections.abc import Iterator, Sized

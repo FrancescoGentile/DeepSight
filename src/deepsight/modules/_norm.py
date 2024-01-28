@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from typing import Any, Literal, Protocol
 
@@ -45,6 +44,17 @@ class ImageNorm(Protocol):
     def __call__(
         self, x: Tensor[Literal["B C H W"], float]
     ) -> Tensor[Literal["B C H W"], float]: ...
+
+
+# --------------------------------------------------------------------------- #
+# LayerNorm2D
+# --------------------------------------------------------------------------- #
+# Copyright 2022 The IDEA Authors. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/IDEA-Research/detrex/blob/main/detrex/layers/layer_norm.py
+# --------------------------------------------------------------------------- #
 
 
 class LayerNorm2D(Module):
@@ -115,8 +125,15 @@ class LayerNorm2D(Module):
         return x
 
 
-# Source code taken from torchvision
+# --------------------------------------------------------------------------- #
+# FrozenBatchNorm2d
+# --------------------------------------------------------------------------- #
+# Copyright (c) Soumith Chintala 2016. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# --------------------------------------------------------------------------- #
+# Modified from:
 # https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py
+# --------------------------------------------------------------------------- #
 
 
 class FrozenBatchNorm2d(Module):

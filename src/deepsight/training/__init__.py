@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from ._engine import Engine
 from ._misc import BatchLosses, ClipGradNorm, ClipGradValue, Precision

@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from ._mask import Mask
 from ._mechanism import AttentionMechanism, ScaledDotProductAttention

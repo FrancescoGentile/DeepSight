@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright 2020 Ross Wightman
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/patch_embed.py
+# --------------------------------------------------------------------------- #
 
 from collections.abc import Callable
 

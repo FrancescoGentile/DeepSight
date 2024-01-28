@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (C) 2021-2023 ExplosionAI GmbH
+# SPDX-License-Identifier: MIT
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/explosion/curated-transformers/blob/main/curated_transformers/layers/attention.py
+# --------------------------------------------------------------------------- #
 
 import abc
 from typing import Literal

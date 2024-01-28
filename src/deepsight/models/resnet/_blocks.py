@@ -1,6 +1,5 @@
-## Source code taken and modified from torchvision
-## https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 import math
 from collections.abc import Callable

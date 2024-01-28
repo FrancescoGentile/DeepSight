@@ -1,13 +1,13 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
+from ._enums import ImageMode, InterpolationMode
 from ._image import Image
-from ._mode import ImageMode
 
 __all__ = [
+    # _enums
+    "ImageMode",
+    "InterpolationMode",
     # _image
     "Image",
-    # _mode
-    "ImageMode",
 ]

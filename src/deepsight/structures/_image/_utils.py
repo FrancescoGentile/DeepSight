@@ -1,6 +1,12 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright (c) Soumith Chintala 2016. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/pytorch/vision/tree/main/torchvision/transforms/v2
+# --------------------------------------------------------------------------- #
 
 from typing import Literal
 

@@ -1,6 +1,5 @@
-##
-##
-##
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
 
 from collections.abc import Callable
 from typing import Literal
@@ -150,6 +149,26 @@ class MultiHeadAttentionWithPos(Module):
         k_norm: int | Callable[[int], SequenceNorm] | None = None,
         out_dropout: float = 0.0,
     ) -> None:
+        """Initialize the multi-head attention module.
+
+        Args:
+            qkv_generator: The query, key, and value generator.
+            mechanism: The module used to compute the attention scores and
+                aggregate the values to generate the output.
+            out_dim: The output dimension. If passed, a linear projection is
+                applied to the output of the attention module to generate the
+                output tensor. If `None`, no projection is applied.
+            qkv_dropout: The dropout rate applied to the output of the query,
+                key, and value generator.
+            q_norm: The query normalization module. If `None`, no normalization is
+                applied. If an integer is passed, Lp norm with the given integer is
+                applied. If a callable is passed, the callable is used to generate the
+                normalization module by passing the input dimension.
+            k_norm: The key normalization module. See `q_norm` for details.
+            out_dropout: The dropout rate applied to the output of the
+                attention module. If a projection is applied, the dropout is
+                applied to the output of the projection.
+        """
         super().__init__()
 
         self.qkv_generator = qkv_generator

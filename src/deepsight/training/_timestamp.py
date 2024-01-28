@@ -1,7 +1,12 @@
-##
-##
-##
-
+# Copyright 2024 The DeepSight Team.
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Copyright 2022 MosaicML Composer authors
+# SPDX-License-Identifier: Apache-2.0
+# --------------------------------------------------------------------------- #
+# Modified from:
+# https://github.com/mosaicml/composer/blob/dev/composer/core/time.py
+# --------------------------------------------------------------------------- #
 
 from collections.abc import Iterable
 from typing import Any, Self
