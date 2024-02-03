@@ -6,9 +6,9 @@ authors = [
     {name = "Francesco Gentile", email = "francesco.gentile@studenti.unitn.it"},
 ]
 dependencies = [
-    "torch<2.3,>2.1",
+    "torch>=2.2",
     "numpy>=1.23",
-    "coolname>=2.2.0",
+    "coolname>=2.2",
     "Pillow>=10.0",
     "wandb>=0.16",
     "tqdm>=4.66",
@@ -22,20 +22,11 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm]
-distribution = "true"
-
-[tool.pdm.resolution]
-allow_prereleases = true
-
-[[tool.pdm.source]]
-url = "https://download.pytorch.org/whl/nightly/cu121"
-verify_ssl = true
-name = "internal"
-include_packages = ["torch"]
+distribution = true
 
 [tool.pdm.dev-dependencies]
 lint = [
-    "ruff>=0.1.8",
+    "ruff>=0.2",
     "pyright>=1.1.341",
 ]
 docs = [
@@ -43,22 +34,3 @@ docs = [
     "mkdocstrings[python]>=0.24.0",
     "mkdocs-material>=9.4.10",
 ]
-
-
-[tool.ruff]
-line-length = 88
-target-version = "py312"
-select = [
-    "A", "ANN", "B", "C4", "C90", "D", "E", "F", 
-    "FA", "I", "ICN", "INP", "G", "N", "PIE", "PYI", 
-    "Q", "RSE", "SIM", "T20", "UP", "W"
-]
-ignore = ["A003", "ANN101", "ANN102", "ANN401", "C901", "D104"]
-fixable = ["ALL"]
-fix = true
-
-[tool.ruff.pydocstyle]
-convention = "google"
-
-[tool.ruff.format]
-preview = true

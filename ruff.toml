@@ -1,0 +1,19 @@
+line-length = 88
+target-version = "py312"
+fix = true
+preview = true
+
+[lint]
+select = [
+    "A", "ANN", "B", "C4", "C90", "D", "E", "F", 
+    "FA", "G", "I", "ICN", "INP", "G", "N", "PIE", "PYI", 
+    "Q", "RSE", "SIM", "T20", "UP", "W"
+]
+ignore = ["A003", "ANN401", "C901", "D104"]
+fixable = ["ALL"]
+
+[lint.pydocstyle]
+convention = "google"
+
+[format]
+preview = true

@@ -159,15 +159,16 @@ class QKVGeneratorWithPos(Module, abc.ABC):
     """
 
     @property
+    @abc.abstractmethod
     def num_heads(self) -> int:
         """The number of heads."""
-        ...
 
     @property
+    @abc.abstractmethod
     def head_dim(self) -> int:
         """The dimension of the hidden space of each head."""
-        ...
 
+    @abc.abstractmethod
     def __call__(
         self,
         query: Tensor[Literal["B Q Dq"], float],
@@ -192,7 +193,6 @@ class QKVGeneratorWithPos(Module, abc.ABC):
         Returns:
             The generated queries, keys and values.
         """
-        ...
 
 
 class LinearQKVGeneratorWithPrePosAddition(QKVGeneratorWithPos):
