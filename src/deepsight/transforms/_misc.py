@@ -9,17 +9,21 @@
 # --------------------------------------------------------------------------- #
 
 from collections.abc import Sequence
-from typing import overload
+from types import TracebackType
 
 import torch
 
 from deepsight.structures import BoundingBoxes, Image, ImageMode
-from deepsight.typing import Configs
+from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
 
+# --------------------------------------------------------------------------- #
+# ToDtype
+# --------------------------------------------------------------------------- #
 
-class ToDtype(Transform):
+
+class ToDtype(Transform, Configurable):
     """Convert an image to the given data type, optionally scaling the values.
 
     Scaling means that the values of the image are transformed to the expected range
@@ -50,41 +54,29 @@ class ToDtype(Transform):
             "scale": self.scale,
         }
 
+    def transform_image(self, image: Image) -> Image:
+        return image.to_dtype(self.dtype, scale=self.scale)
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes
+
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(self, image: Image) -> Image: ...
+    def __enter__(self) -> None: ...
 
-    @overload
-    def __call__(
+    def __exit__(
         self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
 
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
-        if image.dtype != torch.uint8 and not self.dtype.is_floating_point:
-            raise NotImplementedError(
-                f"Currently, only converting from `torch.uint8` to a floating-point "
-                f"data type is supported. Got {image.dtype} -> {self.dtype}."
-            )
 
-        new_image = image.data.to(self.dtype)
-        if self.scale:
-            new_image = new_image / 255.0
-
-        image = image.to_dtype(self.dtype, self.scale)
-        match boxes:
-            case None:
-                return image
-            case BoundingBoxes():
-                return image, boxes
+# --------------------------------------------------------------------------- #
+# ToMode
+# --------------------------------------------------------------------------- #
 
 
 class ToMode(Transform):
@@ -107,31 +99,29 @@ class ToMode(Transform):
     def get_configs(self, recursive: bool) -> Configs:
         return {"mode": str(self._mode)}
 
+    def transform_image(self, image: Image) -> Image:
+        return image.to_mode(self._mode)
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes
+
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(self, image: Image) -> Image: ...
+    def __enter__(self) -> None: ...
 
-    @overload
-    def __call__(
+    def __exit__(
         self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
 
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
-        image = image.to_mode(self._mode)
-        match boxes:
-            case None:
-                return image
-            case BoundingBoxes():
-                return image, boxes
+
+# --------------------------------------------------------------------------- #
+# Standardize
+# --------------------------------------------------------------------------- #
 
 
 class Standardize(Transform):
@@ -156,31 +146,28 @@ class Standardize(Transform):
         self.mean = mean
         self.std = std
 
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
     def get_configs(self, recursive: bool) -> Configs:
         return {"mean": self.mean, "std": self.std}
+
+    def transform_image(self, image: Image) -> Image:
+        return image.standardize(self.mean, self.std)
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(self, image: Image) -> Image: ...
+    def __enter__(self) -> None: ...
 
-    @overload
-    def __call__(
+    def __exit__(
         self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
-
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
-        image = image.standardize(self.mean, self.std)
-        match boxes:
-            case None:
-                return image
-            case BoundingBoxes():
-                return image, boxes
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...

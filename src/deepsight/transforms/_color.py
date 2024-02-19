@@ -10,16 +10,20 @@
 
 import math
 import random
-from typing import overload
+from types import TracebackType
 
 from deepsight.structures import BoundingBoxes, Image
-from deepsight.typing import Configs
+from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
 
 
-class ColorJitter(Transform):
+class ColorJitter(Transform, Configurable):
     """Randomly change the brightness, contrast, saturation and hue of an image."""
+
+    # ----------------------------------------------------------------------- #
+    # Constructor
+    # ----------------------------------------------------------------------- #
 
     def __init__(
         self,
@@ -68,6 +72,12 @@ class ColorJitter(Transform):
             "hue", hue, center=0.0, bounds=(-0.5, 0.5), clip_first_on_zero=False
         )
 
+        self._params: tuple[tuple[int, float], ...] | None = None
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
@@ -80,53 +90,68 @@ class ColorJitter(Transform):
             "hue": self._hue,
         }
 
+    def transform_image(self, image: Image) -> Image:
+        params = self._params if self._params is not None else self._choose_params()
+
+        for idx, value in params:
+            match idx:
+                case 0:
+                    image = image.adjust_brightness(value)
+                case 1:
+                    image = image.adjust_contrast(value)
+                case 2:
+                    image = image.adjust_saturation(value)
+                case 3:
+                    image = image.adjust_hue(value)
+                case _:
+                    raise RuntimeError("Invalid index.")
+
+        return image
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes
+
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(self, image: Image) -> Image: ...
+    def __enter__(self) -> None:
+        self._params = self._choose_params()
 
-    @overload
-    def __call__(
+    def __exit__(
         self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._params = None
 
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _choose_params(self) -> tuple[tuple[int, float], ...]:
         perm = random.sample(range(4), 4)
 
+        params: list[tuple[int, float]] = []
         for idx in perm:
             match idx:
                 case 0:
                     if self._brightness is not None:
-                        brightness_factor = random.uniform(*self._brightness)
-                        image = image.adjust_brightness(brightness_factor)
+                        params.append((0, random.uniform(*self._brightness)))
                 case 1:
                     if self._contrast is not None:
-                        contrast_factor = random.uniform(*self._contrast)
-                        image = image.adjust_contrast(contrast_factor)
+                        params.append((1, random.uniform(*self._contrast)))
                 case 2:
                     if self._saturation is not None:
-                        saturation_factor = random.uniform(*self._saturation)
-                        image = image.adjust_saturation(saturation_factor)
+                        params.append((2, random.uniform(*self._saturation)))
                 case 3:
                     if self._hue is not None:
-                        hue_factor = random.uniform(*self._hue)
-                        image = image.adjust_hue(hue_factor)
+                        params.append((3, random.uniform(*self._hue)))
                 case _:
                     raise RuntimeError("This should never happen.")
 
-        match boxes:
-            case None:
-                return image
-            case BoundingBoxes():
-                return image, boxes
+        return tuple(params)
 
 
 # --------------------------------------------------------------------------- #

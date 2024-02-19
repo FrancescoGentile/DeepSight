@@ -8,26 +8,30 @@
 # https://github.com/pytorch/vision/blob/main/torchvision/transforms/v2/_geometry.py
 # --------------------------------------------------------------------------- #
 
-from typing import overload
+from types import TracebackType
 
 from deepsight import utils
 from deepsight.structures import BoundingBoxes, Image, InterpolationMode
-from deepsight.typing import Configs
+from deepsight.typing import Configs, Configurable
 
-from ._base import Transform, check_image_boxes
+from ._base import Transform
 
 # --------------------------------------------------------------------------- #
 # Resize
 # --------------------------------------------------------------------------- #
 
 
-class Resize(Transform):
+class Resize(Transform, Configurable):
     """Resize the input image to the given size."""
+
+    # ----------------------------------------------------------------------- #
+    # Constructor
+    # ----------------------------------------------------------------------- #
 
     def __init__(
         self,
         size: int | tuple[int, int],
-        interpolation: InterpolationMode = InterpolationMode.BILINEAR,
+        interpolation: InterpolationMode | str = InterpolationMode.BILINEAR,
         antialias: bool = True,
     ) -> None:
         """Initialize a resize transform.
@@ -48,7 +52,7 @@ class Resize(Transform):
             raise ValueError("All values in `size` must be greater than 0.")
 
         self.size = size
-        self.interpolation = interpolation
+        self.interpolation = InterpolationMode(interpolation)
         self.antialias = antialias
 
     # ----------------------------------------------------------------------- #
@@ -58,57 +62,51 @@ class Resize(Transform):
     def get_configs(self, recursive: bool) -> Configs:
         return {
             "size": self.size,
-            "interpolation": self.interpolation,
+            "interpolation": str(self.interpolation),
             "antialias": self.antialias,
         }
 
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    @overload
-    def __call__(self, image: Image) -> Image: ...
-
-    @overload
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
-
-    @check_image_boxes
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
-        image = image.resize(
+    def transform_image(self, image: Image) -> Image:
+        return image.resize(
             self.size,
             interpolation_mode=self.interpolation,
             antialias=self.antialias,
         )
 
-        match boxes:
-            case None:
-                return image
-            case BoundingBoxes():
-                boxes = boxes.resize(image.size)
-                return image, boxes
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.resize(self.size)
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __enter__(self) -> None: ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
 
 
 # --------------------------------------------------------------------------- #
-# Resize Shortest Side
+# Shortest Side Resize
 # --------------------------------------------------------------------------- #
 
 
-class ShortestSideResize(Transform):
-    """Resize the input image such that the shorter edge is equal to a given value."""
+class ShortestSideResize(Transform, Configurable):
+    """Resize the input image so that the shortest side is of the given size."""
+
+    # ----------------------------------------------------------------------- #
+    # Constructor
+    # ----------------------------------------------------------------------- #
 
     def __init__(
         self,
         size: int,
         max_size: int | None = None,
-        interpolation: InterpolationMode = InterpolationMode.BILINEAR,
+        interpolation: InterpolationMode | str = InterpolationMode.BILINEAR,
         antialias: bool = True,
     ) -> None:
         """Initialize a shortest side resize transform.
@@ -133,7 +131,7 @@ class ShortestSideResize(Transform):
 
         self.size = size
         self.max_size = max_size
-        self.interpolation = interpolation
+        self.interpolation = InterpolationMode(interpolation)
         self.antialias = antialias
 
     # ----------------------------------------------------------------------- #
@@ -144,49 +142,46 @@ class ShortestSideResize(Transform):
         return {
             "size": self.size,
             "max_size": self.max_size,
-            "interpolation": self.interpolation,
+            "interpolation": str(self.interpolation),
             "antialias": self.antialias,
         }
+
+    def transform_image(self, image: Image) -> Image:
+        return image.resize(
+            size=self._compute_size(image.size),
+            interpolation_mode=self.interpolation,
+            antialias=self.antialias,
+        )
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.resize(self._compute_size(boxes.image_size))
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    @overload
-    def __call__(self, image: Image) -> Image: ...
+    def __enter__(self) -> None: ...
 
-    @overload
-    def __call__(
+    def __exit__(
         self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
 
-    @check_image_boxes
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
-        ratio = self.size / min(image.height, image.width)
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _compute_size(self, size: tuple[int, int]) -> tuple[int, int]:
+        ratio = self.size / min(size)
         if self.max_size is not None:
-            ratio = min(self.max_size / max(image.height, image.width), ratio)
+            ratio = min(self.max_size / max(size), ratio)
 
-        new_height = int(image.height * ratio)
-        new_width = int(image.width * ratio)
+        new_height = round(size[0] * ratio)
+        new_width = round(size[1] * ratio)
 
-        image = image.resize(
-            (new_height, new_width),
-            interpolation_mode=self.interpolation,
-            antialias=self.antialias,
-        )
-
-        match boxes:
-            case None:
-                return image
-            case BoundingBoxes():
-                boxes = boxes.resize(image.size)
-                return image, boxes
+        return new_height, new_width
 
 
 # --------------------------------------------------------------------------- #
@@ -200,27 +195,17 @@ class HorizontalFlip(Transform):
     def __init__(self) -> None:
         super().__init__()
 
-    def get_configs(self, recursive: bool) -> Configs:
-        return {}
+    def transform_image(self, image: Image) -> Image:
+        return image.horizontal_flip()
 
-    @overload
-    def __call__(self, image: Image) -> Image: ...
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.horizontal_flip()
 
-    @overload
-    def __call__(
+    def __enter__(self) -> None: ...
+
+    def __exit__(
         self,
-        image: Image,
-        boxes: BoundingBoxes,
-    ) -> tuple[Image, BoundingBoxes]: ...
-
-    @check_image_boxes
-    def __call__(
-        self,
-        image: Image,
-        boxes: BoundingBoxes | None = None,
-    ) -> Image | tuple[Image, BoundingBoxes]:
-        match boxes:
-            case None:
-                return image.horizontal_flip()
-            case BoundingBoxes():
-                return image.horizontal_flip(), boxes.horizontal_flip()
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
