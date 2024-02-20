@@ -12,15 +12,14 @@ class Transform(Protocol):
 
     def transform_image(self, image: Image) -> Image:
         """Transform an image."""
-        ...
+        return image
 
     def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
         """Transform bounding boxes."""
-        ...
+        return boxes
 
     def __enter__(self) -> None:
         """Initialize the transform parameters."""
-        ...
 
     def __exit__(
         self,
@@ -29,4 +28,3 @@ class Transform(Protocol):
         traceback: TracebackType | None,
     ) -> None:
         """Clean up the transform parameters."""
-        ...

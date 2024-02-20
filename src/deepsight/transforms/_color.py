@@ -12,7 +12,7 @@ import math
 import random
 from types import TracebackType
 
-from deepsight.structures import BoundingBoxes, Image
+from deepsight.structures import Image
 from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
@@ -107,9 +107,6 @@ class ColorJitter(Transform, Configurable):
                     raise RuntimeError("Invalid index.")
 
         return image
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        return boxes
 
     # ----------------------------------------------------------------------- #
     # Magic Methods

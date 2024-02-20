@@ -9,11 +9,10 @@
 # --------------------------------------------------------------------------- #
 
 from collections.abc import Sequence
-from types import TracebackType
 
 import torch
 
-from deepsight.structures import BoundingBoxes, Image, ImageMode
+from deepsight.structures import Image, ImageMode
 from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
@@ -57,22 +56,6 @@ class ToDtype(Transform, Configurable):
     def transform_image(self, image: Image) -> Image:
         return image.to_dtype(self.dtype, scale=self.scale)
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        return boxes
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None: ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None: ...
-
 
 # --------------------------------------------------------------------------- #
 # ToMode
@@ -101,22 +84,6 @@ class ToMode(Transform):
 
     def transform_image(self, image: Image) -> Image:
         return image.to_mode(self._mode)
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        return boxes
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None: ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -155,19 +122,3 @@ class Standardize(Transform):
 
     def transform_image(self, image: Image) -> Image:
         return image.standardize(self.mean, self.std)
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        return boxes
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None: ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None: ...

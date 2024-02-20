@@ -8,8 +8,6 @@
 # https://github.com/pytorch/vision/blob/main/torchvision/transforms/v2/_geometry.py
 # --------------------------------------------------------------------------- #
 
-from types import TracebackType
-
 from deepsight import utils
 from deepsight.structures import BoundingBoxes, Image, InterpolationMode
 from deepsight.typing import Configs, Configurable
@@ -75,19 +73,6 @@ class Resize(Transform, Configurable):
 
     def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
         return boxes.resize(self.size)
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None: ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -157,19 +142,6 @@ class ShortestSideResize(Transform, Configurable):
         return boxes.resize(self._compute_size(boxes.image_size))
 
     # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None: ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None: ...
-
-    # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
@@ -200,12 +172,3 @@ class HorizontalFlip(Transform):
 
     def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
         return boxes.horizontal_flip()
-
-    def __enter__(self) -> None: ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None: ...
