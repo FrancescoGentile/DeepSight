@@ -150,8 +150,8 @@ class ShortestSideResize(Transform, Configurable):
         if self.max_size is not None:
             ratio = min(self.max_size / max(size), ratio)
 
-        new_height = round(size[0] * ratio)
-        new_width = round(size[1] * ratio)
+        new_height = int(size[0] * ratio)
+        new_width = int(size[1] * ratio)
 
         return new_height, new_width
 
