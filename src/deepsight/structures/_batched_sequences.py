@@ -6,10 +6,10 @@ from typing import Literal, Self
 
 import torch
 
-from deepsight.typing import Moveable, Number, Tensor
+from deepsight.typing import Detachable, Moveable, Number, Tensor
 
 
-class BatchedSequences(Moveable):
+class BatchedSequences(Detachable, Moveable):
     """Structure to hold a batch of sequences as a single tensor."""
 
     # ----------------------------------------------------------------------- #
@@ -186,6 +186,14 @@ class BatchedSequences(Moveable):
             mask=self._mask.to(device, non_blocking=non_blocking)
             if self._mask is not None
             else None,
+            check_validity=False,
+        )
+
+    def detach(self) -> Self:
+        return self.__class__(
+            self._data.detach(),
+            sequence_lengths=self._sequence_lengths,
+            mask=self._mask.detach() if self._mask is not None else None,
             check_validity=False,
         )
 

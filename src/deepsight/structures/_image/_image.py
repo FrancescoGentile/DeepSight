@@ -9,13 +9,13 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 from PIL import Image as PILImage
 
-from deepsight.typing import Moveable, Number, PathLike, Tensor
+from deepsight.typing import Detachable, Moveable, Number, PathLike, Tensor
 
 from . import _utils as utils
 from ._enums import ImageMode, InterpolationMode
 
 
-class Image(Moveable):
+class Image(Detachable, Moveable):
     """A wrapper around a tensor representing an image."""
 
     # ----------------------------------------------------------------------- #
@@ -121,6 +121,9 @@ class Image(Moveable):
             self._data.to(device, non_blocking=non_blocking),
             self._mode,
         )
+
+    def detach(self) -> Self:
+        return self.__class__(self._data.detach(), self._mode)
 
     # ----------------------------------------------------------------------- #
     # Geometric Transformations

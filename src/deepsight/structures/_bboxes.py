@@ -6,7 +6,7 @@ from typing import Any, Literal, Self
 
 import torch
 
-from deepsight.typing import Moveable, Tensor
+from deepsight.typing import Detachable, Moveable, Tensor
 
 
 class BoundingBoxFormat(enum.Enum):
@@ -38,7 +38,7 @@ class BoundingBoxFormat(enum.Enum):
         return f"BoundingBoxFormat.{self.value.upper()}"
 
 
-class BoundingBoxes(Moveable):
+class BoundingBoxes(Detachable, Moveable):
     """Structure to handle bounding boxes."""
 
     # -----------------------------------------------------------------------  #
@@ -447,6 +447,14 @@ class BoundingBoxes(Moveable):
 
         return self.__class__(
             self.coordinates.to(device, non_blocking=non_blocking),
+            self.format,
+            self.normalized,
+            self.image_size,
+        )
+
+    def detach(self) -> Self:
+        return self.__class__(
+            self.coordinates.detach(),
             self.format,
             self.normalized,
             self.image_size,

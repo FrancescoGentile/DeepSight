@@ -6,12 +6,12 @@ from typing import Literal, Self
 
 import torch
 
-from deepsight.typing import Tensor
+from deepsight.typing import Detachable, Moveable, Tensor
 
 from ._bboxes import BoundingBoxes, BoundingBoxFormat
 
 
-class BatchedBoundingBoxes:
+class BatchedBoundingBoxes(Detachable, Moveable):
     """Structure to store a batch of multiple bounding boxes per image."""
 
     # ----------------------------------------------------------------------- #
@@ -426,6 +426,27 @@ class BatchedBoundingBoxes:
     def unbatch(self) -> tuple[BoundingBoxes, ...]:
         """Unbatch the bounding boxes into a list of bounding boxes."""
         return tuple(self[i] for i in range(len(self)))
+
+    def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
+        if self.device == device:
+            return self
+
+        return self.__class__(
+            coordinates=self._coordinates.to(device, non_blocking=non_blocking),
+            format=self._format,
+            normalized=self._normalized,
+            image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
+        )
+
+    def detach(self) -> Self:
+        return self.__class__(
+            coordinates=self._coordinates.detach(),
+            format=self._format,
+            normalized=self._normalized,
+            image_sizes=self._image_sizes,
+            num_boxes_per_image=self._num_boxes,
+        )
 
     # ----------------------------------------------------------------------- #
     # Magic Methods

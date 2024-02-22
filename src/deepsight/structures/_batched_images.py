@@ -15,12 +15,12 @@ from typing import Literal, Self
 import torch
 
 from deepsight import utils
-from deepsight.typing import Moveable, Number, Tensor
+from deepsight.typing import Detachable, Moveable, Number, Tensor
 
 from ._batched_sequences import BatchedSequences
 
 
-class BatchedImages(Moveable):
+class BatchedImages(Detachable, Moveable):
     """Structure to hold a batch of images as a single tensor."""
 
     # ----------------------------------------------------------------------- #
@@ -262,6 +262,14 @@ class BatchedImages(Moveable):
             mask=self._mask.to(device, non_blocking=non_blocking)
             if self._mask is not None
             else None,
+            check_validity=False,
+        )
+
+    def detach(self) -> Self:
+        return self.__class__(
+            self._data.detach(),
+            image_sizes=self._image_sizes,
+            mask=self._mask.detach() if self._mask is not None else None,
             check_validity=False,
         )
 
