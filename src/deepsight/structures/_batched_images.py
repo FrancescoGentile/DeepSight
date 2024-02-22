@@ -132,6 +132,7 @@ class BatchedImages(Detachable, Moveable):
             # height and width, so we can simply reshape the sequences to images
             h, w = image_sizes[0]
             images = sequences.data.view(len(sequences), h, w, -1)
+            images = images.permute(0, 3, 1, 2)
             return cls(images, image_sizes=image_sizes)
         else:
             # if the sequences are padded, we need to unbatch them and pad each image
