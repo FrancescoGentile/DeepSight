@@ -2,24 +2,40 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import TracebackType
-from typing import Protocol
+from typing import Literal, Protocol
 
 from deepsight.structures import BoundingBoxes, Image
+from deepsight.typing import Tensor
 
 
 class Transform(Protocol):
     """Interface for all transforms."""
 
     def transform_image(self, image: Image) -> Image:
-        """Transform an image."""
+        """Apply the transform to the image."""
         return image
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        """Transform bounding boxes."""
-        return boxes
+    def transform_boxes(
+        self, boxes: BoundingBoxes
+    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
+        """Apply the transform to the bounding boxes.
+
+        Returns:
+            A tuple containing the transformed bounding boxes and a mask indicating
+            which of the passed bounding boxes have been returned (the mask is None if
+            all bounding boxes are returned). The returned bounding boxes are in the
+            same order as the input bounding boxes.
+        """
+        return boxes, None
 
     def __enter__(self) -> None:
-        """Initialize the transform parameters."""
+        """Initialize the parameters for the transform.
+
+        All invocations of the transform within the context manager will use the same
+        parameters. This is useful if the transform has any random components, such as
+        random rotations or color jittering, and you want to ensure that the same random
+        parameters are used for all invocations of the transform.
+        """
 
     def __exit__(
         self,
@@ -27,4 +43,4 @@ class Transform(Protocol):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        """Clean up the transform parameters."""
+        """Clean up the parameters for the transform."""

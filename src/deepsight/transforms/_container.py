@@ -11,10 +11,13 @@
 import random
 from collections.abc import Iterable, Sequence
 from types import TracebackType
+from typing import Literal
+
+import torch
 
 from deepsight import utils
 from deepsight.structures import BoundingBoxes, Image
-from deepsight.typing import Configs, Configurable
+from deepsight.typing import Configs, Configurable, Tensor
 
 from ._base import Transform
 
@@ -56,11 +59,15 @@ class SequentialOrder(Transform, Configurable):
 
         return image
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def transform_boxes(
+        self, boxes: BoundingBoxes
+    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
+        keep = None
         for transform in self.transforms:
-            boxes = transform.transform_boxes(boxes)
+            boxes, last_keep = transform.transform_boxes(boxes)
+            keep = _update_keep_mask(keep, last_keep)
 
-        return boxes
+        return boxes, keep
 
 
 # --------------------------------------------------------------------------- #
@@ -105,13 +112,17 @@ class RandomOrder(Transform, Configurable):
 
         return image
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def transform_boxes(
+        self, boxes: BoundingBoxes
+    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
         order = self._order if self._order is not None else self._choose_order()
 
+        keep = None
         for idx in order:
-            boxes = self.transforms[idx].transform_boxes(boxes)
+            boxes, last_keep = self.transforms[idx].transform_boxes(boxes)
+            keep = _update_keep_mask(keep, last_keep)
 
-        return boxes
+        return boxes, keep
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
@@ -177,13 +188,15 @@ class RandomApply(Transform, Configurable):
 
         return image
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def transform_boxes(
+        self, boxes: BoundingBoxes
+    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
         apply = self._apply if self._apply is not None else self._choose_apply()
 
         if apply:
-            boxes = self.transform.transform_boxes(boxes)
-
-        return boxes
+            return self.transform.transform_boxes(boxes)
+        else:
+            return boxes, None
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
@@ -269,7 +282,9 @@ class RandomChoice(Transform, Configurable):
 
         return self.transforms[apply_index].transform_image(image)
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def transform_boxes(
+        self, boxes: BoundingBoxes
+    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
         apply_index = (
             self._apply_index if self._apply_index is not None else self._choose_index()
         )
@@ -297,3 +312,61 @@ class RandomChoice(Transform, Configurable):
 
     def _choose_index(self) -> int:
         return random.choices(range(len(self.transforms)), weights=self.p)[0]
+
+
+# --------------------------------------------------------------------------- #
+# Private helper functions
+# --------------------------------------------------------------------------- #
+
+
+def _update_keep_mask(
+    prev_keep: Tensor[Literal["N"], bool] | None,
+    last_keep: Tensor[Literal["M"], bool] | None,
+) -> Tensor[Literal["N"], bool] | None:
+    """Update the current set of boxes to keep after a transform has been applied.
+
+    Args:
+        prev_keep: A tensor of shape (N,) indicating which of the original N
+            boxes are still kept after all the previous transforms have been applied.
+            The number of boxes kept so far is equal to the number of `True` values
+            in the tensor and should be equal to `M`.
+        last_keep: A tensor of shape (M,) indicating which of the last M boxes are
+            still kept after the current transform has been applied.
+
+    Returns:
+        The updated set of boxes to keep. This is a tensor of shape (N,) indicating
+        which of the original N boxes are still kept after all the previous transforms
+        and the current transform have been applied. If all the boxes are still kept,
+        `None` is returned.
+    """
+    match (prev_keep, last_keep):
+        case (None, None):
+            # No boxes have been removed so far and no boxes have been removed
+            # by the current transform, so all the boxes are still kept and no
+            # update is needed.
+            new_keep = None
+        case (None, torch.Tensor()):
+            # No boxes have been removed so far, but the current transform has
+            # removed some boxes, so we can simply set the current set of boxes
+            # to keep to the new keep mask.
+            new_keep = last_keep
+        case (torch.Tensor(), None):
+            # Some boxes have been removed so far, but the current transform
+            # hasn't removed any boxes, so we don't need to update the current
+            # set of boxes to keep.
+            new_keep = prev_keep
+        case (torch.Tensor(), torch.Tensor()):
+            # Some boxes have been removed so far and the current transform has
+            # removed some boxes, so we need to remove the boxes that have been
+            # removed by the current transform from the current set of boxes to
+            # keep.
+            current_keep_idx = torch.nonzero(prev_keep).squeeze(1)
+            current_keep_idx = current_keep_idx[last_keep]
+            new_keep = torch.zeros_like(prev_keep)
+            new_keep[current_keep_idx] = True
+        case _:
+            # This should never happen if the transforms are implemented
+            # correctly.
+            raise RuntimeError("Incompatible keep masks.")
+
+    return new_keep
