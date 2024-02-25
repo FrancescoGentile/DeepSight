@@ -8,11 +8,9 @@
 # https://github.com/pytorch/vision/blob/main/torchvision/transforms/v2/_geometry.py
 # --------------------------------------------------------------------------- #
 
-from typing import Literal
-
 from deepsight import utils
 from deepsight.structures import BoundingBoxes, Image, InterpolationMode
-from deepsight.typing import Configs, Configurable, Tensor
+from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
 
@@ -73,10 +71,8 @@ class Resize(Transform, Configurable):
             antialias=self.antialias,
         )
 
-    def transform_boxes(
-        self, boxes: BoundingBoxes
-    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
-        return boxes.resize(self.size), None
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.resize(self.size)
 
 
 # --------------------------------------------------------------------------- #
@@ -142,10 +138,8 @@ class ShortestSideResize(Transform, Configurable):
             antialias=self.antialias,
         )
 
-    def transform_boxes(
-        self, boxes: BoundingBoxes
-    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
-        return boxes.resize(self._compute_size(boxes.image_size)), None
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.resize(self._compute_size(boxes.image_size))
 
     # ----------------------------------------------------------------------- #
     # Private Methods
@@ -176,7 +170,5 @@ class HorizontalFlip(Transform):
     def transform_image(self, image: Image) -> Image:
         return image.horizontal_flip()
 
-    def transform_boxes(
-        self, boxes: BoundingBoxes
-    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
-        return boxes.horizontal_flip(), None
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.horizontal_flip()

@@ -437,6 +437,25 @@ class BoundingBoxes(Detachable, Moveable):
         eps = torch.finfo(intersection_area.dtype).eps
         return intersection_area / (union_area + eps)
 
+    def is_valid(self) -> Tensor[Literal["N"], bool]:
+        """Check if the bounding boxes are valid.
+
+        The bounding boxes are valid if they are inside the image and are not
+        degenerate.
+
+        Returns:
+            A boolean mask indicating which bounding boxes are valid.
+        """
+        boxes = self.to_xyxy()
+        H, W = (1, 1) if boxes.normalized else boxes.image_size  # noqa: N806
+        x1, y1, x2, y2 = boxes.coordinates.unbind(dim=-1)
+
+        valid = (boxes.coordinates >= 0).all(dim=-1)
+        valid &= (x1 <= W) & (y1 <= H) & (x2 <= W) & (y2 <= H)
+        valid &= ((x2 - x1) > 0) & ((y2 - y1) > 0)
+
+        return valid
+
     def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         if self.device == torch.device(device):
             return self

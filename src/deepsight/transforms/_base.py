@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from types import TracebackType
-from typing import Literal, Protocol
+from typing import Protocol
 
 from deepsight.structures import BoundingBoxes, Image
-from deepsight.typing import Tensor
 
 
 class Transform(Protocol):
@@ -15,18 +14,9 @@ class Transform(Protocol):
         """Apply the transform to the image."""
         return image
 
-    def transform_boxes(
-        self, boxes: BoundingBoxes
-    ) -> tuple[BoundingBoxes, Tensor[Literal["N"], bool] | None]:
-        """Apply the transform to the bounding boxes.
-
-        Returns:
-            A tuple containing the transformed bounding boxes and a mask indicating
-            which of the passed bounding boxes have been returned (the mask is None if
-            all bounding boxes are returned). The returned bounding boxes are in the
-            same order as the input bounding boxes.
-        """
-        return boxes, None
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        """Apply the transform to the bounding boxes."""
+        return boxes
 
     def __enter__(self) -> None:
         """Initialize the parameters for the transform.
