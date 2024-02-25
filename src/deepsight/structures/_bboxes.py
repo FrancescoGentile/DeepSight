@@ -286,26 +286,22 @@ class BoundingBoxes(Detachable, Moveable):
 
     def horizontal_flip(self) -> Self:
         """Flip the bounding box coordinates horizontally."""
-        boxes = self.to_xyxy()
+        W = 1 if self.normalized else self.image_size[1]  # noqa: N806
 
-        if boxes.normalized:
-            offset = self._coordinates.new_ones((4,))
-        else:
-            offset = self._coordinates.new_tensor([
-                self.image_size[1],
-                self.image_size[0],
-                self.image_size[1],
-                self.image_size[0],
-            ])
-
-        tmp = offset - boxes.coordinates
-        coordinates = torch.cat([tmp[..., 2:], tmp[..., :2]], dim=-1)
+        coords = self.coordinates.clone()
+        match self.format:
+            case BoundingBoxFormat.XYXY:
+                coords[:, [2, 0]] = coords[:, [0, 2]].sub_(W).neg_()
+            case BoundingBoxFormat.XYWH:
+                coords[:, 0].add_(coords[:, 2]).sub_(W).neg_()
+            case BoundingBoxFormat.CXCYWH:
+                coords[:, 0].sub_(W).neg_()
 
         return self.__class__(
-            coordinates,
-            boxes.format,
-            boxes.normalized,
-            boxes.image_size,
+            coords,
+            format=self.format,
+            normalized=self.normalized,
+            image_size=self.image_size,
         )
 
     def area(self) -> Tensor[Literal["N"], float]:
