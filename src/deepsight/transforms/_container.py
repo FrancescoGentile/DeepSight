@@ -62,6 +62,23 @@ class SequentialOrder(Transform, Configurable):
 
         return boxes
 
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __enter__(self) -> None:
+        for transform in self.transforms:
+            transform.__enter__()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        for transform in self.transforms:
+            transform.__exit__(exc_type, exc_value, traceback)
+
 
 # --------------------------------------------------------------------------- #
 # Random Order
@@ -119,6 +136,8 @@ class RandomOrder(Transform, Configurable):
 
     def __enter__(self) -> None:
         self._order = self._choose_order()
+        for idx in self._order:
+            self.transforms[idx].__enter__()
 
     def __exit__(
         self,
@@ -126,6 +145,11 @@ class RandomOrder(Transform, Configurable):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        if self._order is None:
+            return
+
+        for idx in self._order:
+            self.transforms[idx].__exit__(exc_type, exc_value, traceback)
         self._order = None
 
     # ----------------------------------------------------------------------- #
@@ -191,6 +215,8 @@ class RandomApply(Transform, Configurable):
 
     def __enter__(self) -> None:
         self._apply = self._choose_apply()
+        if self._apply:
+            self.transform.__enter__()
 
     def __exit__(
         self,
@@ -198,6 +224,12 @@ class RandomApply(Transform, Configurable):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        if self._apply is None:
+            return
+
+        if self._apply:
+            self.transform.__exit__(exc_type, exc_value, traceback)
+
         self._apply = None
 
     # ----------------------------------------------------------------------- #
@@ -282,6 +314,7 @@ class RandomChoice(Transform, Configurable):
 
     def __enter__(self) -> None:
         self._apply_index = self._choose_index()
+        self.transforms[self._apply_index].__enter__()
 
     def __exit__(
         self,
@@ -289,6 +322,10 @@ class RandomChoice(Transform, Configurable):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        if self._apply_index is None:
+            return
+
+        self.transforms[self._apply_index].__exit__(exc_type, exc_value, traceback)
         self._apply_index = None
 
     # ----------------------------------------------------------------------- #
