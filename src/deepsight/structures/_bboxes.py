@@ -437,6 +437,27 @@ class BoundingBoxes(Detachable, Moveable):
         eps = torch.finfo(intersection_area.dtype).eps
         return intersection_area / (union_area + eps)
 
+    def clamp_to_image(self) -> Self:
+        """Clamp the bounding box coordinates to the image size.
+
+        If the bounding boxes are normalized, then the coordinates are clipped
+        to the [0, 1] range. Otherwise, the coordinates are clipped to the
+        image size.
+
+        Returns:
+            A new bounding box object with the clipped coordinates.
+        """
+        boxes = self.to_xyxy()
+        H, W = (1, 1) if boxes.normalized else boxes.image_size  # noqa: N806
+        coords = boxes.coordinates.clone()
+        coords[..., 0].clamp_(min=0, max=W)
+        coords[..., 1].clamp_(min=0, max=H)
+        coords[..., 2].clamp_(min=0, max=W)
+        coords[..., 3].clamp_(min=0, max=H)
+
+        boxes = self.__class__(coords, boxes.format, boxes.normalized, boxes.image_size)
+        return boxes.convert_like(self)
+
     def is_valid(self) -> Tensor[Literal["N"], bool]:
         """Check if the bounding boxes are valid.
 
