@@ -104,7 +104,7 @@ class BoundingBoxes(Detachable, Moveable):
         return self._coordinates.device
 
     # -----------------------------------------------------------------------  #
-    # Public methods
+    # Conversion Methods
     # -----------------------------------------------------------------------  #
 
     def to_xyxy(self) -> Self:
@@ -250,6 +250,10 @@ class BoundingBoxes(Detachable, Moveable):
         the given bounding box object."""  # noqa
         return self.convert(other.format, other.normalized)
 
+    # -----------------------------------------------------------------------  #
+    # Transform Methods
+    # -----------------------------------------------------------------------  #
+
     def resize(self, image_size: tuple[int, int]) -> Self:
         """Resize the bounding box coordinates to the corresponding image size.
 
@@ -303,6 +307,42 @@ class BoundingBoxes(Detachable, Moveable):
             normalized=self.normalized,
             image_size=self.image_size,
         )
+
+    def crop(self, top: int, left: int, bottom: int, right: int) -> Self:
+        """Crop the bounding box coordinates to the given region.
+
+        Args:
+            top: The top coordinate of the crop region.
+            left: The left coordinate of the crop region.
+            bottom: The bottom coordinate of the crop region.
+            right: The right coordinate of the crop region.
+
+        Returns:
+            A new bounding box object with the cropped coordinates.
+        """
+        boxes = self.denormalize()
+        match boxes.format:
+            case BoundingBoxFormat.XYXY:
+                sub = torch.tensor([left, top, left, top], device=self.device)
+            case BoundingBoxFormat.XYWH:
+                sub = torch.tensor([left, top, 0, 0], device=self.device)
+            case BoundingBoxFormat.CXCYWH:
+                sub = torch.tensor([left, top, 0, 0], device=self.device)
+
+        coords = boxes.coordinates - sub
+        boxes = self.__class__(
+            coords,
+            format=boxes.format,
+            normalized=False,
+            image_size=(bottom - top, right - left),
+        )
+        boxes = boxes.clamp_to_image()
+
+        return boxes.convert_like(self)
+
+    # -----------------------------------------------------------------------  #
+    # Operations
+    # -----------------------------------------------------------------------  #
 
     def area(self) -> Tensor[Literal["N"], float]:
         """Compute the area of the bounding boxes.
@@ -437,6 +477,10 @@ class BoundingBoxes(Detachable, Moveable):
         eps = torch.finfo(intersection_area.dtype).eps
         return intersection_area / (union_area + eps)
 
+    # -----------------------------------------------------------------------  #
+    # Validation Methods
+    # -----------------------------------------------------------------------  #
+
     def clamp_to_image(self) -> Self:
         """Clamp the bounding box coordinates to the image size.
 
@@ -458,24 +502,44 @@ class BoundingBoxes(Detachable, Moveable):
         boxes = self.__class__(coords, boxes.format, boxes.normalized, boxes.image_size)
         return boxes.convert_like(self)
 
-    def is_valid(self) -> Tensor[Literal["N"], bool]:
+    def is_valid(
+        self,
+        min_width: float = 1,
+        min_height: float = 1,
+    ) -> Tensor[Literal["N"], bool]:
         """Check if the bounding boxes are valid.
 
-        The bounding boxes are valid if they are inside the image and are not
-        degenerate.
+        The bounding boxes are valid if they are inside the image and have a
+        width and height greater than the given minimum values.
+
+        Args:
+            min_width: The minimum width of the bounding boxes. If the bounding
+                boxes are normalized, also the minimum width will be normalized
+                (you do not need to normalize it yourself).
+            min_height: The minimum height of the bounding boxes. If the bounding
+                boxes are normalized, also the minimum height will be normalized
+                (you do not need to normalize it yourself).
 
         Returns:
             A boolean mask indicating which bounding boxes are valid.
         """
         boxes = self.to_xyxy()
         H, W = (1, 1) if boxes.normalized else boxes.image_size  # noqa: N806
+        if boxes.normalized:
+            min_width = min_width / self.image_size[1]
+            min_height = min_height / self.image_size[0]
+
         x1, y1, x2, y2 = boxes.coordinates.unbind(dim=-1)
 
         valid = (boxes.coordinates >= 0).all(dim=-1)
         valid &= (x1 <= W) & (y1 <= H) & (x2 <= W) & (y2 <= H)
-        valid &= ((x2 - x1) > 0) & ((y2 - y1) > 0)
+        valid &= ((x2 - x1) >= min_width) & ((y2 - y1) >= min_height)
 
         return valid
+
+    # -----------------------------------------------------------------------  #
+    # Other Methods
+    # -----------------------------------------------------------------------  #
 
     def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         if self.device == torch.device(device):

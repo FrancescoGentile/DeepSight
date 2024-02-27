@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import enum
+from dataclasses import dataclass
 from typing import Self
 
 from deepsight.typing import str_enum
@@ -61,3 +62,26 @@ class InterpolationMode(enum.Enum):
     NEAREST_EXACT = "nearest_exact"
     BILINEAR = "bilinear"
     BICUBIC = "bicubic"
+
+
+@dataclass(frozen=True)
+class ConstantPadding:
+    """Padding with a constant value."""
+
+    value: float
+
+
+@dataclass(frozen=True)
+class ReplicatePadding:
+    """Replicate the edge values."""
+
+
+@dataclass(frozen=True)
+class ReflectPadding:
+    """Reflect the values at the edge."""
+
+    include_edge: bool
+
+
+type PaddingMode = ConstantPadding | ReplicatePadding | ReflectPadding
+"""The padding mode used to pad an image."""

@@ -8,8 +8,18 @@
 # https://github.com/pytorch/vision/blob/main/torchvision/transforms/v2/_geometry.py
 # --------------------------------------------------------------------------- #
 
+import random
+from dataclasses import dataclass
+from types import TracebackType
+
 from deepsight import utils
-from deepsight.structures import BoundingBoxes, Image, InterpolationMode
+from deepsight.structures import (
+    BoundingBoxes,
+    ConstantPadding,
+    Image,
+    InterpolationMode,
+    PaddingMode,
+)
 from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
@@ -172,3 +182,135 @@ class HorizontalFlip(Transform):
 
     def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
         return boxes.horizontal_flip()
+
+
+# --------------------------------------------------------------------------- #
+# Random Position Crop
+# --------------------------------------------------------------------------- #
+
+
+class RandomCrop(Transform, Configurable):
+    """Crop a region of the input image at a random position and size."""
+
+    @dataclass
+    class _Params:
+        height: int
+        width: int
+        top: float
+        left: float
+
+    def __init__(
+        self,
+        height: int | tuple[int, int],
+        width: int | tuple[int, int],
+        padding_mode: PaddingMode | None = None,
+    ) -> None:
+        """Initialize a random crop transform.
+
+        Args:
+            height: The desired height of the cropped region. If `height` is an integer,
+                then the height of the cropped region will be `height`. If `height` is a
+                tuple, then the height of the cropped region will be a random value
+                between `height[0]` and `height[1]`.
+            width: The desired width of the cropped region. If `width` is an integer,
+                then the width of the cropped region will be `width`. If `width` is a
+                tuple, then the width of the cropped region will be a random value
+                between `width[0]` and `width[1]`.
+            padding_mode: The padding mode to use if the input image is smaller than the
+                desired crop size. If `None`, then constant padding with a value of 0 is
+                used.
+        """
+        super().__init__()
+
+        if padding_mode is None:
+            padding_mode = ConstantPadding(0)
+
+        self._height = utils.to_2tuple(height)
+        self._width = utils.to_2tuple(width)
+        self._padding_mode = padding_mode
+
+        self._params: RandomCrop._Params | None = None
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "height": self._height,
+            "width": self._width,
+            "padding_mode": str(self._padding_mode),
+        }
+
+    def transform_image(self, image: Image) -> Image:
+        params = self._params or self._choose_params()
+
+        pad_top, pad_left, pad_bottom, pad_right = 0, 0, 0, 0
+
+        if image.height < params.height:
+            diff = params.height - image.height
+            pad_top = diff // 2
+            pad_bottom = diff - pad_top
+
+        if image.width < params.width:
+            diff = params.width - image.width
+            pad_left = diff // 2
+            pad_right = diff - pad_left
+
+        image = image.pad(
+            top=pad_top,
+            left=pad_left,
+            bottom=pad_bottom,
+            right=pad_right,
+            mode=self._padding_mode,
+        )
+
+        top = int(params.top * (image.height - params.height + 1))
+        left = int(params.left * (image.width - params.width + 1))
+
+        return image.crop(
+            top=top,
+            left=left,
+            bottom=top + params.height,
+            right=left + params.width,
+        )
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        params = self._params or self._choose_params()
+
+        top = int(params.top * (boxes.image_size[0] - params.height + 1))
+        left = int(params.left * (boxes.image_size[1] - params.width + 1))
+
+        return boxes.crop(
+            top=top,
+            left=left,
+            bottom=top + params.height,
+            right=left + params.width,
+        )
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __enter__(self) -> None:
+        self._params = self._choose_params()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._params = None
+
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _choose_params(self) -> _Params:
+        return RandomCrop._Params(
+            height=random.randint(self._height[0], self._height[1]),
+            width=random.randint(self._width[0], self._width[1]),
+            top=random.random(),
+            left=random.random(),
+        )

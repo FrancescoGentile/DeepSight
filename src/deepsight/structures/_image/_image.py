@@ -12,7 +12,14 @@ from PIL import Image as PILImage
 from deepsight.typing import Detachable, Moveable, Number, PathLike, Tensor
 
 from . import _utils as utils
-from ._enums import ImageMode, InterpolationMode
+from ._enums import (
+    ConstantPadding,
+    ImageMode,
+    InterpolationMode,
+    PaddingMode,
+    ReflectPadding,
+    ReplicatePadding,
+)
 
 
 class Image(Detachable, Moveable):
@@ -167,6 +174,39 @@ class Image(Detachable, Moveable):
         data.squeeze_(0)
 
         return self.__class__(data, self._mode)
+
+    def crop(self, top: int, left: int, bottom: int, right: int) -> Self:
+        """Crop the image.
+
+        Args:
+            top: The top coordinate of the crop.
+            left: The left coordinate of the crop.
+            bottom: The bottom coordinate of the crop.
+            right: The right coordinate of the crop.
+
+        Returns:
+            The cropped image.
+
+        Raises:
+            ValueError: If the crop region is not within the image bounds. If you want
+                to crop a region of the image that is not (fully) within the image
+                bounds, first call `self.pad` to pad the image such that the region is
+                within the padded image bounds.
+        """
+        H, W = self.size  # noqa: N806
+        if not (0 <= top < bottom <= H):
+            raise ValueError(
+                f"Expected `top` and `bottom` to be in the range [0, {H}]. Got "
+                f"{top} and {bottom}."
+            )
+        if not (0 <= left < right <= W):
+            raise ValueError(
+                f"Expected `left` and `right` to be in the range [0, {W}]. Got "
+                f"{left} and {right}."
+            )
+
+        data = self._data[:, top:bottom, left:right]
+        return self.__class__(data.clone(), self._mode)
 
     def horizontal_flip(self) -> Self:
         """Flip the image horizontally."""
@@ -393,6 +433,42 @@ class Image(Detachable, Moveable):
     def to_dtype(self, dtype: torch.dtype, scale: bool) -> Self:
         """Convert the image to a different dtype."""
         data = utils.to_dtype(self._data, dtype, scale)
+        return self.__class__(data, self._mode)
+
+    def pad(
+        self, top: int, left: int, bottom: int, right: int, mode: PaddingMode
+    ) -> Self:
+        """Pad the image.
+
+        !!! note
+            If the padding is (0, 0, 0, 0), `self` is returned.
+
+        Args:
+            top: The top padding.
+            left: The left padding.
+            bottom: The bottom padding.
+            right: The right padding.
+            mode: The padding mode.
+
+        Returns:
+            The padded image.
+        """
+        if (top, left, bottom, right) == (0, 0, 0, 0):
+            return self
+
+        match mode:
+            case ConstantPadding(value):
+                data = F.pad(
+                    self._data,
+                    pad=(left, right, top, bottom),
+                    mode="constant",
+                    value=value,
+                )
+            case ReplicatePadding():
+                raise NotImplementedError("Replicate padding is not yet implemented.")
+            case ReflectPadding():
+                raise NotImplementedError("Reflection padding is not yet implemented.")
+
         return self.__class__(data, self._mode)
 
     # ----------------------------------------------------------------------- #

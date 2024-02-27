@@ -4,7 +4,7 @@
 from ._base import Transform
 from ._color import ColorJitter
 from ._container import RandomApply, RandomChoice, RandomOrder, SequentialOrder
-from ._geometry import HorizontalFlip, Resize, ShortestSideResize
+from ._geometry import HorizontalFlip, RandomCrop, Resize, ShortestSideResize
 from ._misc import Standardize, ToDtype, ToMode
 
 __all__ = [
@@ -19,6 +19,7 @@ __all__ = [
     "SequentialOrder",
     # _geometry
     "HorizontalFlip",
+    "RandomCrop",
     "Resize",
     "ShortestSideResize",
     # _misc
