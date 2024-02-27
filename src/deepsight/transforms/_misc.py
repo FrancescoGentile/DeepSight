@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 import torch
 
-from deepsight.structures import Image, ImageMode
+from deepsight.structures import BoundingBoxes, Image, ImageMode
 from deepsight.typing import Configs, Configurable
 
 from ._base import Transform
@@ -122,3 +122,19 @@ class Standardize(Transform):
 
     def transform_image(self, image: Image) -> Image:
         return image.standardize(self.mean, self.std)
+
+
+# --------------------------------------------------------------------------- #
+# Clamp Bounding Boxes
+# --------------------------------------------------------------------------- #
+
+
+class ClampBoundingBoxes(Transform):
+    """Clamp bounding boxes to the image boundaries."""
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        return boxes.clamp_to_image()
