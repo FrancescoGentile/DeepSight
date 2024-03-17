@@ -166,7 +166,7 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
         wandb.log(commit_info)
 
-    def on_fit_end(
+    def on_run_end(
         self,
         state: State[S, O, A, P],
         error: Exception | KeyboardInterrupt | None,

@@ -50,7 +50,7 @@ class EpochPhaseTimestamp(Stateful):
         self._ended = ended
 
     @classmethod
-    def start[S, O, A, P](cls, phase: EpochPhase[S, O, A, P]) -> Self:  # type: ignore
+    def new[S, O, A, P](cls, phase: EpochPhase[S, O, A, P]) -> Self:  # type: ignore
         """Creates a new timestamp corresponding to the start of an epoch phase."""
         return cls(
             label=phase.label,
@@ -128,7 +128,7 @@ class EpochPhaseTimestamp(Stateful):
         """Whether the phase has ended."""
         return self._ended
 
-    def start_epoch(self) -> None:
+    def start(self) -> None:
         """Start a new epoch."""
         self._started = True
         self._ended = False
@@ -138,7 +138,7 @@ class EpochPhaseTimestamp(Stateful):
         self._batch_in_epoch += 1
         self._sample_in_epoch += batch_size
 
-    def end_epoch(self) -> None:
+    def end(self) -> None:
         """End the current epoch."""
         self._num_epochs += 1
         self._batch_in_epoch = 0
@@ -204,11 +204,11 @@ class Timestamp(Stateful):
         self._phases = phases
 
     @classmethod
-    def start[S, O, A, P](cls, phases: Iterable[EpochPhase[S, O, A, P]]) -> Self:  # type: ignore
+    def new[S, O, A, P](cls, phases: Iterable[EpochPhase[S, O, A, P]]) -> Self:  # type: ignore
         """Creates a new timestamp corresponding to the start of training."""
         return cls(
             num_epochs=0,
-            phases=tuple(EpochPhaseTimestamp.start(phase) for phase in phases),
+            phases=tuple(EpochPhaseTimestamp.new(phase) for phase in phases),
         )
 
     # ----------------------------------------------------------------------- #

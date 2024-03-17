@@ -15,10 +15,12 @@ from deepsight.training import BatchLosses, State
 
 
 class Callback[S, O, A, P](Protocol):
+    """Interface for callbacks that can be registered with the training engine."""
+
     def on_init(self, state: State[S, O, A, P]) -> None:
         pass
 
-    def on_fit_start(self, state: State[S, O, A, P]) -> None:
+    def on_run_start(self, state: State[S, O, A, P]) -> None:
         pass
 
     def on_epoch_start(self, state: State[S, O, A, P]) -> None:
@@ -80,7 +82,7 @@ class Callback[S, O, A, P](Protocol):
     def on_epoch_end(self, state: State[S, O, A, P]) -> None:
         pass
 
-    def on_fit_end(
+    def on_run_end(
         self,
         state: State[S, O, A, P],
         error: Exception | KeyboardInterrupt | None,

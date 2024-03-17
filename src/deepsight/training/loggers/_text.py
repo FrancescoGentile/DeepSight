@@ -66,7 +66,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         if log_start:
             self._log_start(state)
 
-    def on_fit_start(self, state: State[S, O, A, P]) -> None:
+    def on_run_start(self, state: State[S, O, A, P]) -> None:
         self._logger.info("Starting training.")
 
     def on_epoch_start(self, state: State[S, O, A, P]) -> None:
@@ -113,7 +113,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
     def on_epoch_end(self, state: State[S, O, A, P]) -> None:
         self._logger.info("Epoch %d finished.", state.timestamp.num_epochs + 1)
 
-    def on_fit_end(
+    def on_run_end(
         self,
         state: State[S, O, A, P],
         error: Exception | KeyboardInterrupt | None,

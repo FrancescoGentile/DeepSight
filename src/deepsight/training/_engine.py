@@ -85,7 +85,7 @@ class Engine[S, O: Detachable, A, P]:
             run_name=run_name,
             model=model,
             phases=phases,
-            timestamp=Timestamp.start(phases),
+            timestamp=Timestamp.new(phases),
             device=device,
             precision=precision,
             scaler=scaler,
@@ -101,9 +101,9 @@ class Engine[S, O: Detachable, A, P]:
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def fit(self) -> None:
+    def run(self) -> None:
         for callback in self._state.callbacks:
-            callback.on_fit_start(self._state)
+            callback.on_run_start(self._state)
 
         try:
             while not self._should_stop():
@@ -111,14 +111,14 @@ class Engine[S, O: Detachable, A, P]:
                 self._state.next_epoch()
 
             for callback in reversed(self._state.callbacks):
-                callback.on_fit_end(self._state, None)
+                callback.on_run_end(self._state, None)
         except KeyboardInterrupt as e:
             for callback in reversed(self._state.callbacks):
-                callback.on_fit_end(self._state, error=e)
+                callback.on_run_end(self._state, error=e)
             raise e
         except Exception as e:
             for callback in reversed(self._state.callbacks):
-                callback.on_fit_end(self._state, error=e)
+                callback.on_run_end(self._state, error=e)
             raise e
 
     # ----------------------------------------------------------------------- #
@@ -148,10 +148,7 @@ class Engine[S, O: Detachable, A, P]:
 
     def _execute_phase(self) -> None:
         phase = self._state.current_phase
-        self._state.current_phase_timestamp.start_epoch()
-
-        for callback in self._state.callbacks:
-            callback.on_phase_start(self._state)
+        self._state.current_phase_timestamp.start()
 
         match phase:
             case TrainingPhase():
@@ -159,12 +156,7 @@ class Engine[S, O: Detachable, A, P]:
             case EvaluationPhase():
                 self._execute_evaluation_phase(phase)
 
-        for callback in reversed(self._state.callbacks):
-            callback.on_phase_end(self._state)
-
-        self._state.current_phase_timestamp.end_epoch()
-        if phase.evaluator is not None:
-            phase.evaluator.reset()
+        self._state.current_phase_timestamp.end()
 
     # ----------------------------------------------------------------------- #
     # Evaluation
@@ -173,6 +165,9 @@ class Engine[S, O: Detachable, A, P]:
     def _execute_evaluation_phase(self, phase: EvaluationPhase[S, O, A, P]) -> None:
         torch.set_grad_enabled(False)
         self._state.model.eval()
+
+        for callback in self._state.callbacks:
+            callback.on_phase_start(self._state)
 
         for samples, annotations, golds in phase.dataloader:
             for callback in self._state.callbacks:
@@ -222,6 +217,11 @@ class Engine[S, O: Detachable, A, P]:
 
             self._state.current_phase_timestamp.next_batch(len(samples))
 
+        for callback in reversed(self._state.callbacks):
+            callback.on_phase_end(self._state)
+
+        phase.evaluator.reset()
+
     # ----------------------------------------------------------------------- #
     # Training
     # ----------------------------------------------------------------------- #
@@ -231,6 +231,13 @@ class Engine[S, O: Detachable, A, P]:
         self._state.model.train()
         for optimizer in phase.optimizers:
             optimizer.zero_grad()
+
+        # We call `on_phase_start` after setting the model to training mode to allow
+        # the callbacks to set parts of the model to evaluation mode if needed (for
+        # example, frozen layers) only at the beginning of the phase instead of at
+        # the beginning of each step.
+        for callback in self._state.callbacks:
+            callback.on_phase_start(self._state)
 
         for samples, annotations, golds in phase.dataloader:
             for callback in self._state.callbacks:
@@ -244,6 +251,12 @@ class Engine[S, O: Detachable, A, P]:
                 callback.on_step_end(self._state)
 
             self._state.current_phase_timestamp.next_batch(len(samples))
+
+        for callback in reversed(self._state.callbacks):
+            callback.on_phase_end(self._state)
+
+        if phase.evaluator is not None:
+            phase.evaluator.reset()
 
     def _execute_accumulation_steps(
         self,
