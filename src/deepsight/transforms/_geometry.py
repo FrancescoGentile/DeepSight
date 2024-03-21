@@ -86,6 +86,96 @@ class Resize(Transform, Configurable):
 
 
 # --------------------------------------------------------------------------- #
+# Random Resize
+# --------------------------------------------------------------------------- #
+
+
+class RandomResize(Transform, Configurable):
+    """Resize the input image to a random size within the given range.
+
+    The image is resized to a square with a length randomly chosen in the range
+    `[min_size, max_size]`.
+    """
+
+    def __init__(
+        self,
+        min_size: int,
+        max_size: int,
+        interpolation: InterpolationMode | str = InterpolationMode.BILINEAR,
+        antialias: bool = True,
+    ) -> None:
+        """Initialize a random resize transform.
+
+        Args:
+            min_size: The minimum output size.
+            max_size: The maximum output size.
+            interpolation: The interpolation mode to use.
+            antialias: Whether to use an anti-aliasing.
+        """
+        super().__init__()
+
+        if not (0 < min_size <= max_size):
+            raise ValueError(
+                "`min_size` must be greater than 0 and less than `max_size`."
+            )
+
+        self._min_size = min_size
+        self._max_size = max_size
+        self._interpolation = InterpolationMode(interpolation)
+        self._antialias = antialias
+
+        self._size: int | None = None
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "min_size": self._min_size,
+            "max_size": self._max_size,
+            "interpolation": str(self._interpolation),
+            "antialias": self._antialias,
+        }
+
+    def transform_image(self, image: Image) -> Image:
+        size = self._size or self._choose_size()
+
+        return image.resize(
+            (size, size),
+            interpolation_mode=self._interpolation,
+            antialias=self._antialias,
+        )
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        size = self._size or self._choose_size()
+
+        return boxes.resize((size, size))
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __enter__(self) -> None:
+        self._size = self._choose_size()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._size = None
+
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _choose_size(self) -> int:
+        return random.randint(self._min_size, self._max_size)
+
+
+# --------------------------------------------------------------------------- #
 # Shortest Side Resize
 # --------------------------------------------------------------------------- #
 
@@ -162,6 +252,123 @@ class ShortestSideResize(Transform, Configurable):
 
         new_height = int(size[0] * ratio)
         new_width = int(size[1] * ratio)
+
+        return new_height, new_width
+
+
+# --------------------------------------------------------------------------- #
+# Random Shortest Side Resize
+# --------------------------------------------------------------------------- #
+
+
+class RandomShortestSideResize(Transform, Configurable):
+    """Resize the input image choosing a random size for the shorter edge."""
+
+    def __init__(
+        self,
+        min_shortest_side: int,
+        max_shortest_side: int,
+        max_longest_side: int | None = None,
+        interpolation: InterpolationMode | str = InterpolationMode.BILINEAR,
+        antialias: bool = True,
+    ) -> None:
+        """Initialize a random shortest side resize transform.
+
+        Args:
+            min_shortest_side: The minimum output size of the shorter edge of the image.
+            max_shortest_side: The maximum output size of the shorter edge of the image.
+            max_longest_side: The maximum output size of the longer edge of the image.
+                If after resizing the shorter edge of the image to a random size between
+                `min_shortest_side` and `max_shortest_side`, the longer edge is greater
+                than `max_longest_side`, then the image is resized again such that the
+                longer edge is equal to `max_longest_side` (meaning that the shorter
+                edge will be smaller than the previously chosen size).
+            interpolation: The interpolation mode to use.
+            antialias: Whether to use an anti-aliasing filter.
+        """
+        super().__init__()
+
+        if not (0 < min_shortest_side <= max_shortest_side):
+            raise ValueError(
+                "`min_shortest_side` must be greater than 0 and less than "
+                "`max_shortest_side`."
+            )
+
+        if max_longest_side is not None and max_shortest_side > max_longest_side:
+            raise ValueError(
+                "`max_shortest_side` must be less than or equal to `max_longest_side`."
+            )
+
+        self._min_shortest_side = min_shortest_side
+        self._max_shortest_side = max_shortest_side
+        self._max_longest_side = max_longest_side
+        self._interpolation = InterpolationMode(interpolation)
+        self._antialias = antialias
+
+        self._size: int | None = None
+
+    # ----------------------------------------------------------------------- #
+    # Public Methods
+    # ----------------------------------------------------------------------- #
+
+    def get_configs(self, recursive: bool) -> Configs:
+        return {
+            "min_shortest_side": self._min_shortest_side,
+            "max_shortest_side": self._max_shortest_side,
+            "max_longest_side": self._max_longest_side,
+            "interpolation": str(self._interpolation),
+            "antialias": self._antialias,
+        }
+
+    def transform_image(self, image: Image) -> Image:
+        size = self._size or self._choose_size()
+        size = self._compute_size(size, image.size)
+
+        return image.resize(
+            size=size,
+            interpolation_mode=self._interpolation,
+            antialias=self._antialias,
+        )
+
+    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+        size = self._size or self._choose_size()
+        size = self._compute_size(size, boxes.image_size)
+
+        return boxes.resize(size)
+
+    # ----------------------------------------------------------------------- #
+    # Magic Methods
+    # ----------------------------------------------------------------------- #
+
+    def __enter__(self) -> None:
+        self._size = self._choose_size()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._size = None
+
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _choose_size(self) -> int:
+        return random.randint(self._min_shortest_side, self._max_shortest_side)
+
+    def _compute_size(
+        self,
+        chosen_size: int,
+        input_size: tuple[int, int],
+    ) -> tuple[int, int]:
+        ratio = chosen_size / min(input_size)
+        if self._max_longest_side is not None:
+            ratio = min(self._max_longest_side / max(input_size), ratio)
+
+        new_height = int(input_size[0] * ratio)
+        new_width = int(input_size[1] * ratio)
 
         return new_height, new_width
 

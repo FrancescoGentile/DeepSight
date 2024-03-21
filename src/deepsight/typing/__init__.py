@@ -5,6 +5,8 @@ from ._decorators import str_enum
 from ._protocols import Configurable, Detachable, Moveable, Stateful
 from ._types import (
     Configs,
+    DeviceLike,
+    EnumLike,
     Loss,
     Losses,
     Number,
@@ -24,6 +26,8 @@ __all__ = [
     "Stateful",
     # _types
     "Configs",
+    "DeviceLike",
+    "EnumLike",
     "Loss",
     "Losses",
     "PathLike",

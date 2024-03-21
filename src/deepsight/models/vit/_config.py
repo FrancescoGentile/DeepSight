@@ -78,6 +78,21 @@ class EncoderConfig:
         return _build_encoder_config(variant)  # type: ignore
 
 
+@dataclass(frozen=True)
+class BackboneConfig:
+    """Configuration for the ViT backbone.
+
+    Args:
+        encoder: Configuration for the ViT encoder.
+        multiply_by_class_token: Whether to multiply the patch features by the
+            class token before returning them. If `True`, a further normalization
+            layer is added after the multiplication.
+    """
+
+    encoder: EncoderConfig
+    multiply_by_class_token: bool = False
+
+
 # --------------------------------------------------------------------------- #
 # Private functions
 # --------------------------------------------------------------------------- #

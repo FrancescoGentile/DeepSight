@@ -541,6 +541,10 @@ class BoundingBoxes(Detachable, Moveable):
     # Other Methods
     # -----------------------------------------------------------------------  #
 
+    def to_tensor(self) -> Tensor[Literal["N 4"], float]:
+        """Convert the bounding box coordinates to a tensor."""
+        return self.coordinates
+
     def to(self, device: torch.device | str, *, non_blocking: bool = False) -> Self:
         if self.device == torch.device(device):
             return self
