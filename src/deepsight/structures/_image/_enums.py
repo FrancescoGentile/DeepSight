@@ -9,8 +9,8 @@ from deepsight.typing import str_enum
 
 
 @str_enum
-class ImageMode(enum.Enum):
-    """The image mode."""
+class ColorSpace(enum.Enum):
+    """Color space of an image."""
 
     GRAYSCALE = "grayscale"
     RGB = "rgb"

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ._enums import (
+    ColorSpace,
     ConstantPadding,
-    ImageMode,
     InterpolationMode,
     PaddingMode,
     ReflectPadding,
@@ -13,8 +13,8 @@ from ._image import Image
 
 __all__ = [
     # _enums
+    "ColorSpace",
     "ConstantPadding",
-    "ImageMode",
     "InterpolationMode",
     "PaddingMode",
     "ReflectPadding",

@@ -6,9 +6,9 @@ from ._batched_images import BatchedImages
 from ._batched_sequences import BatchedSequences
 from ._bboxes import BoundingBoxes, BoundingBoxFormat
 from ._image import (
+    ColorSpace,
     ConstantPadding,
     Image,
-    ImageMode,
     InterpolationMode,
     PaddingMode,
     ReflectPadding,
@@ -26,9 +26,9 @@ __all__ = [
     "BoundingBoxes",
     "BoundingBoxFormat",
     # _image
+    "ColorSpace",
     "ConstantPadding",
     "Image",
-    "ImageMode",
     "InterpolationMode",
     "PaddingMode",
     "ReflectPadding",

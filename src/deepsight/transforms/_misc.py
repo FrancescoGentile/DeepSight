@@ -13,8 +13,8 @@ from typing import Any
 
 import torch
 
-from deepsight.structures import BoundingBoxes, Image, ImageMode
-from deepsight.typing import Configurable
+from deepsight.structures import BoundingBoxes, ColorSpace, Image
+from deepsight.typing import Configurable, EnumLike
 
 from ._base import Transform
 
@@ -59,32 +59,32 @@ class ToDtype(Transform, Configurable):
 
 
 # --------------------------------------------------------------------------- #
-# ToMode
+# ToColorSpace
 # --------------------------------------------------------------------------- #
 
 
-class ToMode(Transform):
-    """Convert an image to the given mode."""
+class ToColorSpace(Transform):
+    """Convert an image to the given color space."""
 
-    def __init__(self, mode: ImageMode | str) -> None:
-        """Initialize a to-mode transform.
+    def __init__(self, color_space: EnumLike[ColorSpace]) -> None:
+        """Initializes the to-color-space transform.
 
         Args:
-            mode: The desired mode.
+            color_space: The desired color space.
         """
         super().__init__()
 
-        self._mode = ImageMode(mode)
+        self._color_space = ColorSpace(color_space)
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> dict[str, Any]:
-        return {"mode": str(self._mode)}
+        return {"mode": str(self._color_space)}
 
     def transform_image(self, image: Image) -> Image:
-        return image.to_mode(self._mode)
+        return image.to_color_space(self._color_space)
 
 
 # --------------------------------------------------------------------------- #

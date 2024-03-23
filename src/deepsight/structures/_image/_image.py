@@ -9,12 +9,12 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 from PIL import Image as PILImage
 
-from deepsight.typing import Detachable, Moveable, Number, PathLike, Tensor
+from deepsight.typing import Detachable, EnumLike, Moveable, Number, PathLike, Tensor
 
 from . import _utils as utils
 from ._enums import (
+    ColorSpace,
     ConstantPadding,
-    ImageMode,
     InterpolationMode,
     PaddingMode,
     ReflectPadding,
@@ -32,7 +32,7 @@ class Image(Detachable, Moveable):
     def __init__(
         self,
         data: Tensor[Literal["_ H W"], Number],
-        mode: ImageMode | str,
+        color_space: EnumLike[ColorSpace],
     ) -> None:
         if data.ndim != 3:
             raise ValueError(
@@ -40,44 +40,48 @@ class Image(Detachable, Moveable):
                 f"image."
             )
 
-        mode = ImageMode(mode)
-        if data.shape[0] != mode.num_channels():
+        color_space = ColorSpace(color_space)
+        if data.shape[0] != color_space.num_channels():
             raise ValueError(
-                f"Expected the image to have {mode.num_channels()} channels. Got "
-                f"{data.shape[0]} channels."
+                f"Expected the image to have {color_space.num_channels()} channels. "
+                f"Got {data.shape[0]} channels."
             )
 
         self._data = data
-        self._mode = mode
+        self._color_space = color_space
 
     @classmethod
-    def open(cls, path: PathLike, mode: ImageMode | str | None = None) -> Self:
+    def open(
+        cls,
+        path: PathLike,
+        color_space: EnumLike[ColorSpace] | None = None,
+    ) -> Self:
         """Opens an image from a file.
 
         Args:
             path: The path to the image file.
-            mode: The image mode to optionally convert the image to. If `None`, the
-                image is not converted.
+            color_space: The color space of the image. If `None`, no conversion is
+                performed.
 
         Returns:
             The image.
         """
         pil_image = PILImage.open(str(path))
-        if mode is not None:
-            mode = ImageMode(mode)
-            pil_image = pil_image.convert(mode=mode.to_pil_mode())
+        if color_space is not None:
+            color_space = ColorSpace(color_space)
+            pil_image = pil_image.convert(mode=color_space.to_pil_mode())
         else:
-            mode = ImageMode.from_pil_mode(pil_image.mode)
+            color_space = ColorSpace.from_pil_mode(pil_image.mode)
 
         data = torch.from_numpy(np.array(pil_image))
-        match mode:
-            case ImageMode.GRAYSCALE:
+        match color_space:
+            case ColorSpace.GRAYSCALE:
                 if data.ndim == 2:
                     data = data.unsqueeze_(0)
-            case ImageMode.RGB:
+            case ColorSpace.RGB:
                 data = data.permute(2, 0, 1)
 
-        return cls(data, mode)
+        return cls(data, color_space)
 
     # ----------------------------------------------------------------------- #
     # Properties
@@ -89,9 +93,9 @@ class Image(Detachable, Moveable):
         return self._data
 
     @property
-    def mode(self) -> ImageMode:
-        """The image mode."""
-        return self._mode
+    def color_space(self) -> ColorSpace:
+        """The color space of the image."""
+        return self._color_space
 
     @property
     def size(self) -> tuple[int, int]:
@@ -126,11 +130,11 @@ class Image(Detachable, Moveable):
 
         return self.__class__(
             self._data.to(device, non_blocking=non_blocking),
-            self._mode,
+            self._color_space,
         )
 
     def detach(self) -> Self:
-        return self.__class__(self._data.detach(), self._mode)
+        return self.__class__(self._data.detach(), self._color_space)
 
     # ----------------------------------------------------------------------- #
     # Geometric Transformations
@@ -173,7 +177,7 @@ class Image(Detachable, Moveable):
         )
         data.squeeze_(0)
 
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     def crop(self, top: int, left: int, bottom: int, right: int) -> Self:
         """Crop the image.
@@ -206,12 +210,12 @@ class Image(Detachable, Moveable):
             )
 
         data = self._data[:, top:bottom, left:right]
-        return self.__class__(data.clone(), self._mode)
+        return self.__class__(data.clone(), self._color_space)
 
     def horizontal_flip(self) -> Self:
         """Flip the image horizontally."""
         data = self._data.flip(-1)
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     # ----------------------------------------------------------------------- #
     # Color Transformations
@@ -224,38 +228,38 @@ class Image(Detachable, Moveable):
 
             If the image is already grayscale or binary, `self` is returned.
         """
-        match self._mode:
-            case ImageMode.GRAYSCALE:
+        match self._color_space:
+            case ColorSpace.GRAYSCALE:
                 return self
-            case ImageMode.RGB:
+            case ColorSpace.RGB:
                 data = utils.rgb_to_grayscale(
                     self._data, num_output_channels=1, preserve_dtype=True
                 )
-                return self.__class__(data, ImageMode.GRAYSCALE)
+                return self.__class__(data, ColorSpace.GRAYSCALE)
 
     def to_rgb(self) -> Self:
         """Convert the image to RGB."""
-        match self._mode:
-            case ImageMode.GRAYSCALE:
+        match self._color_space:
+            case ColorSpace.GRAYSCALE:
                 data = self._data.expand(3, -1, -1)
-                return self.__class__(data, ImageMode.RGB)
-            case ImageMode.RGB:
+                return self.__class__(data, ColorSpace.RGB)
+            case ColorSpace.RGB:
                 return self
 
-    def to_mode(self, mode: ImageMode | str) -> Self:
-        """Convert the image to a different mode.
+    def to_color_space(self, color_space: EnumLike[ColorSpace]) -> Self:
+        """Convert the image to a different color space.
 
         Args:
-            mode: The image mode.
+            color_space: The color space to convert to.
 
         Returns:
             The converted image.
         """
-        mode = ImageMode(mode)
-        match mode:
-            case ImageMode.GRAYSCALE:
+        color_space = ColorSpace(color_space)
+        match color_space:
+            case ColorSpace.GRAYSCALE:
                 return self.to_grayscale()
-            case ImageMode.RGB:
+            case ColorSpace.RGB:
                 return self.to_rgb()
 
     def adjust_brightness(self, brightness_factor: float) -> Self:
@@ -280,7 +284,7 @@ class Image(Detachable, Moveable):
         data = self._data.mul(brightness_factor).clamp_(0, bound)
         data = data.to(dtype=self.dtype)
 
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     def adjust_contrast(self, contrast_factor: float) -> Self:
         """Adjust the contrast of the image.
@@ -300,14 +304,14 @@ class Image(Detachable, Moveable):
                 f"{contrast_factor}."
             )
 
-        match self._mode:
-            case ImageMode.GRAYSCALE:
+        match self._color_space:
+            case ColorSpace.GRAYSCALE:
                 grayscale_data = (
                     self._data
                     if self._data.is_floating_point()
                     else self._data.to(torch.float32)
                 )
-            case ImageMode.RGB:
+            case ColorSpace.RGB:
                 grayscale_data = utils.rgb_to_grayscale(
                     self._data, num_output_channels=1, preserve_dtype=False
                 )
@@ -317,7 +321,7 @@ class Image(Detachable, Moveable):
         mean = torch.mean(grayscale_data, dim=(-3, -2, -1), keepdim=True)
         data = utils.blend(self._data, mean, contrast_factor)
 
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     def adjust_saturation(self, saturation_factor: float) -> Self:
         """Adjust the saturation of the image.
@@ -337,10 +341,10 @@ class Image(Detachable, Moveable):
                 f"{saturation_factor}."
             )
 
-        match self.mode:
-            case ImageMode.GRAYSCALE:
+        match self._color_space:
+            case ColorSpace.GRAYSCALE:
                 return self
-            case ImageMode.RGB:
+            case ColorSpace.RGB:
                 grayscale_data = utils.rgb_to_grayscale(
                     self._data,
                     num_output_channels=1,
@@ -351,7 +355,7 @@ class Image(Detachable, Moveable):
 
                 data = utils.blend(self._data, grayscale_data, saturation_factor)
 
-                return self.__class__(data, self._mode)
+                return self.__class__(data, self._color_space)
 
     def adjust_hue(self, hue_factor: float) -> Self:
         """Adjust the hue of the image.
@@ -371,10 +375,10 @@ class Image(Detachable, Moveable):
                 f"{hue_factor}."
             )
 
-        match self.mode:
-            case ImageMode.GRAYSCALE:
+        match self._color_space:
+            case ColorSpace.GRAYSCALE:
                 return self
-            case ImageMode.RGB:
+            case ColorSpace.RGB:
                 if self._data.numel() == 0:
                     return self
 
@@ -386,7 +390,7 @@ class Image(Detachable, Moveable):
                 data = utils.hsv_to_rgb(hsv_data)
                 data = utils.to_dtype(data, image.dtype, scale=True)
 
-                return self.__class__(data, self._mode)
+                return self.__class__(data, self._color_space)
 
     # ----------------------------------------------------------------------- #
     # Miscellaneous Transformations
@@ -428,15 +432,20 @@ class Image(Detachable, Moveable):
         data = self.data.clone()
         data.sub_(mean_tensor).div_(std_tensor)
 
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     def to_dtype(self, dtype: torch.dtype, scale: bool) -> Self:
         """Convert the image to a different dtype."""
         data = utils.to_dtype(self._data, dtype, scale)
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     def pad(
-        self, top: int, left: int, bottom: int, right: int, mode: PaddingMode
+        self,
+        top: int,
+        left: int,
+        bottom: int,
+        right: int,
+        mode: PaddingMode,
     ) -> Self:
         """Pad the image.
 
@@ -469,14 +478,18 @@ class Image(Detachable, Moveable):
             case ReflectPadding():
                 raise NotImplementedError("Reflection padding is not yet implemented.")
 
-        return self.__class__(data, self._mode)
+        return self.__class__(data, self._color_space)
 
     # ----------------------------------------------------------------------- #
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(size={self.size}, mode={self.mode})"
+        return (
+            f"{self.__class__.__name__}("
+            f"color_space={self._color_space}, "
+            f"size={self.size})"
+        )
 
     def __str__(self) -> str:
         return repr(self)

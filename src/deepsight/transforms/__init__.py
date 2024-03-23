@@ -5,7 +5,7 @@ from ._base import Transform
 from ._color import ColorJitter
 from ._container import RandomApply, RandomChoice, RandomOrder, SequentialOrder
 from ._geometry import HorizontalFlip, RandomCrop, Resize, ShortestSideResize
-from ._misc import ClampBoundingBoxes, Standardize, ToDtype, ToMode
+from ._misc import ClampBoundingBoxes, Standardize, ToColorSpace, ToDtype
 
 __all__ = [
     # _base
@@ -25,6 +25,6 @@ __all__ = [
     # _misc
     "ClampBoundingBoxes",
     "Standardize",
+    "ToColorSpace",
     "ToDtype",
-    "ToMode",
 ]
