@@ -10,7 +10,7 @@
 
 import math
 import random
-from types import TracebackType
+from dataclasses import dataclass
 from typing import Any
 
 from deepsight.structures import Image
@@ -18,8 +18,20 @@ from deepsight.typing import Configurable
 
 from ._base import Transform
 
+# --------------------------------------------------------------------------- #
+# ColorJitter
+# --------------------------------------------------------------------------- #
 
-class ColorJitter(Transform, Configurable):
+
+@dataclass(frozen=True)
+class ColorJitterParameters:
+    brightness: float | None
+    contrast: float | None
+    saturation: float | None
+    hue: float | None
+
+
+class ColorJitter(Transform[ColorJitterParameters], Configurable):
     """Randomly change the brightness, contrast, saturation and hue of an image."""
 
     # ----------------------------------------------------------------------- #
@@ -73,12 +85,6 @@ class ColorJitter(Transform, Configurable):
             "hue", hue, center=0.0, bounds=(-0.5, 0.5), clip_first_on_zero=False
         )
 
-        self._params: tuple[tuple[int, float], ...] | None = None
-
-    # ----------------------------------------------------------------------- #
-    # Public Methods
-    # ----------------------------------------------------------------------- #
-
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
@@ -91,69 +97,48 @@ class ColorJitter(Transform, Configurable):
             "hue": self._hue,
         }
 
-    def transform_image(self, image: Image) -> Image:
-        params = self._params if self._params is not None else self._choose_params()
-
-        for idx, value in params:
-            match idx:
-                case 0:
-                    image = image.adjust_brightness(value)
-                case 1:
-                    image = image.adjust_contrast(value)
-                case 2:
-                    image = image.adjust_saturation(value)
-                case 3:
-                    image = image.adjust_hue(value)
-                case _:
-                    raise RuntimeError("Invalid index.")
-
-        return image
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._params = self._choose_params()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self._params = None
-
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _choose_params(self) -> tuple[tuple[int, float], ...]:
-        perm = random.sample(range(4), 4)
+    def _get_parameters(self) -> ColorJitterParameters:
+        brightness = (
+            random.uniform(self._brightness[0], self._brightness[1])
+            if self._brightness
+            else None
+        )
+        contrast = (
+            random.uniform(self._contrast[0], self._contrast[1])
+            if self._contrast
+            else None
+        )
+        saturation = (
+            random.uniform(self._saturation[0], self._saturation[1])
+            if self._saturation
+            else None
+        )
+        hue = random.uniform(self._hue[0], self._hue[1]) if self._hue else None
 
-        params: list[tuple[int, float]] = []
-        for idx in perm:
-            match idx:
-                case 0:
-                    if self._brightness is not None:
-                        params.append((0, random.uniform(*self._brightness)))
-                case 1:
-                    if self._contrast is not None:
-                        params.append((1, random.uniform(*self._contrast)))
-                case 2:
-                    if self._saturation is not None:
-                        params.append((2, random.uniform(*self._saturation)))
-                case 3:
-                    if self._hue is not None:
-                        params.append((3, random.uniform(*self._hue)))
-                case _:
-                    raise RuntimeError("This should never happen.")
+        return ColorJitterParameters(brightness, contrast, saturation, hue)
 
-        return tuple(params)
+    def _apply_to_image(self, image: Image, parameters: ColorJitterParameters) -> Image:
+        if parameters.brightness is not None:
+            image = image.adjust_brightness(parameters.brightness)
+
+        if parameters.contrast is not None:
+            image = image.adjust_contrast(parameters.contrast)
+
+        if parameters.saturation is not None:
+            image = image.adjust_saturation(parameters.saturation)
+
+        if parameters.hue is not None:
+            image = image.adjust_hue(parameters.hue)
+
+        return image
 
 
 # --------------------------------------------------------------------------- #
-# Private Functions
+# Private functions
 # --------------------------------------------------------------------------- #
 
 

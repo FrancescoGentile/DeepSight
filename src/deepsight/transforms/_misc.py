@@ -23,7 +23,7 @@ from ._base import Transform
 # --------------------------------------------------------------------------- #
 
 
-class ToDtype(Transform, Configurable):
+class ToDtype(Transform[None], Configurable):
     """Convert an image to the given data type, optionally scaling the values.
 
     Scaling means that the values of the image are transformed to the expected range
@@ -54,8 +54,15 @@ class ToDtype(Transform, Configurable):
             "scale": self.scale,
         }
 
-    def transform_image(self, image: Image) -> Image:
-        return image.to_dtype(self.dtype, scale=self.scale)
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _get_parameters(self) -> None:
+        return None
+
+    def _apply_to_image(self, image: Image, parameters: None) -> Image:
+        return image.to_dtype(self.dtype, self.scale)
 
 
 # --------------------------------------------------------------------------- #
@@ -63,7 +70,7 @@ class ToDtype(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class ToColorSpace(Transform):
+class ToColorSpace(Transform[None]):
     """Convert an image to the given color space."""
 
     def __init__(self, color_space: EnumLike[ColorSpace]) -> None:
@@ -81,9 +88,16 @@ class ToColorSpace(Transform):
     # ----------------------------------------------------------------------- #
 
     def get_configs(self, recursive: bool) -> dict[str, Any]:
-        return {"mode": str(self._color_space)}
+        return {"color_space": str(self._color_space)}
 
-    def transform_image(self, image: Image) -> Image:
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _get_parameters(self) -> None:
+        return None
+
+    def _apply_to_image(self, image: Image, parameters: None) -> Image:
         return image.to_color_space(self._color_space)
 
 
@@ -92,7 +106,7 @@ class ToColorSpace(Transform):
 # --------------------------------------------------------------------------- #
 
 
-class Standardize(Transform):
+class Standardize(Transform[None]):
     """Standardize an image with the given mean and standard deviation.
 
     Standardization is performed by subtracting the mean and dividing by the standard
@@ -121,7 +135,14 @@ class Standardize(Transform):
     def get_configs(self, recursive: bool) -> dict[str, Any]:
         return {"mean": self.mean, "std": self.std}
 
-    def transform_image(self, image: Image) -> Image:
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _get_parameters(self) -> None:
+        return None
+
+    def _apply_to_image(self, image: Image, parameters: None) -> Image:
         return image.standardize(self.mean, self.std)
 
 
@@ -130,12 +151,15 @@ class Standardize(Transform):
 # --------------------------------------------------------------------------- #
 
 
-class ClampBoundingBoxes(Transform):
+class ClampBoundingBoxes(Transform[None]):
     """Clamp bounding boxes to the image boundaries."""
 
     # ----------------------------------------------------------------------- #
-    # Public Methods
+    # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def _get_parameters(self) -> None:
+        return None
+
+    def _apply_to_boxes(self, boxes: BoundingBoxes, parameters: None) -> BoundingBoxes:
         return boxes.clamp_to_image()

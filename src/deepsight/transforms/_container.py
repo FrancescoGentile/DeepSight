@@ -10,7 +10,7 @@
 
 import random
 from collections.abc import Iterable, Sequence
-from types import TracebackType
+from dataclasses import dataclass
 from typing import Any
 
 from deepsight import utils
@@ -24,10 +24,15 @@ from ._base import Transform
 # --------------------------------------------------------------------------- #
 
 
-class SequentialOrder(Transform, Configurable):
+@dataclass(frozen=True)
+class SequentialOrderParameters:
+    child_params: list[Any]
+
+
+class SequentialOrder(Transform[SequentialOrderParameters], Configurable):
     """Sequentially apply a list of transforms."""
 
-    def __init__(self, transforms: Iterable[Transform]) -> None:
+    def __init__(self, transforms: Iterable[Transform[Any]]) -> None:
         """Initialize a sequential order transform.
 
         Args:
@@ -35,7 +40,7 @@ class SequentialOrder(Transform, Configurable):
         """
         super().__init__()
 
-        self.transforms = transforms
+        self._transforms = transforms
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -47,38 +52,38 @@ class SequentialOrder(Transform, Configurable):
 
         return {
             "transforms": [
-                utils.get_config(transform, recursive) for transform in self.transforms
+                utils.get_config(transform, recursive) for transform in self._transforms
             ]
         }
 
-    def transform_image(self, image: Image) -> Image:
-        for transform in self.transforms:
-            image = transform.transform_image(image)
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _get_parameters(self) -> SequentialOrderParameters:
+        return SequentialOrderParameters([
+            transform._get_parameters() for transform in self._transforms
+        ])
+
+    def _apply_to_image(
+        self,
+        image: Image,
+        parameters: SequentialOrderParameters,
+    ) -> Image:
+        for t, params in zip(self._transforms, parameters.child_params, strict=True):
+            image = t._apply_to_image(image, params)
 
         return image
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        for transform in self.transforms:
-            boxes = transform.transform_boxes(boxes)
+    def _apply_to_boxes(
+        self,
+        boxes: BoundingBoxes,
+        parameters: SequentialOrderParameters,
+    ) -> BoundingBoxes:
+        for t, params in zip(self._transforms, parameters.child_params, strict=True):
+            boxes = t._apply_to_boxes(boxes, params)
 
         return boxes
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        for transform in self.transforms:
-            transform.__enter__()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        for transform in self.transforms:
-            transform.__exit__(exc_type, exc_value, traceback)
 
 
 # --------------------------------------------------------------------------- #
@@ -86,10 +91,16 @@ class SequentialOrder(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class RandomOrder(Transform, Configurable):
+@dataclass(frozen=True)
+class RandomOrderParameters:
+    order: list[int]
+    child_params: list[Any]
+
+
+class RandomOrder(Transform[RandomOrderParameters], Configurable):
     """Apply a list of transforms in a random order."""
 
-    def __init__(self, transforms: Sequence[Transform]) -> None:
+    def __init__(self, transforms: Sequence[Transform[Any]]) -> None:
         """Initialize a random order transform.
 
         Args:
@@ -97,9 +108,7 @@ class RandomOrder(Transform, Configurable):
         """
         super().__init__()
 
-        self.transforms = transforms
-
-        self._order: Sequence[int] | None = None
+        self._transforms = transforms
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -111,54 +120,37 @@ class RandomOrder(Transform, Configurable):
 
         return {
             "transforms": [
-                utils.get_config(transform, recursive) for transform in self.transforms
+                utils.get_config(transform, recursive) for transform in self._transforms
             ]
         }
-
-    def transform_image(self, image: Image) -> Image:
-        order = self._order if self._order is not None else self._choose_order()
-
-        for idx in order:
-            image = self.transforms[idx].transform_image(image)
-
-        return image
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        order = self._order if self._order is not None else self._choose_order()
-
-        for idx in order:
-            boxes = self.transforms[idx].transform_boxes(boxes)
-
-        return boxes
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._order = self._choose_order()
-        for idx in self._order:
-            self.transforms[idx].__enter__()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        if self._order is None:
-            return
-
-        for idx in self._order:
-            self.transforms[idx].__exit__(exc_type, exc_value, traceback)
-        self._order = None
 
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _choose_order(self) -> Sequence[int]:
-        return random.sample(range(len(self.transforms)), len(self.transforms))
+    def _get_parameters(self) -> RandomOrderParameters:
+        order = random.sample(range(len(self._transforms)), len(self._transforms))
+        child_params = [transform._get_parameters() for transform in self._transforms]
+
+        return RandomOrderParameters(order, child_params)
+
+    def _apply_to_image(self, image: Image, parameters: RandomOrderParameters) -> Image:
+        params = parameters.child_params
+        for idx in parameters.order:
+            image = self._transforms[idx]._apply_to_image(image, params[idx])
+
+        return image
+
+    def _apply_to_boxes(
+        self,
+        boxes: BoundingBoxes,
+        parameters: RandomOrderParameters,
+    ) -> BoundingBoxes:
+        params = parameters.child_params
+        for idx in parameters.order:
+            boxes = self._transforms[idx]._apply_to_boxes(boxes, params[idx])
+
+        return boxes
 
 
 # --------------------------------------------------------------------------- #
@@ -166,10 +158,16 @@ class RandomOrder(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class RandomApply(Transform, Configurable):
+@dataclass(frozen=True)
+class RandomApplyParameters[T]:
+    apply: bool
+    child_params: T
+
+
+class RandomApply[T](Transform[RandomApplyParameters[T]], Configurable):
     """Apply a transform with a probability."""
 
-    def __init__(self, transform: Transform, p: float) -> None:
+    def __init__(self, transform: Transform[T], p: float) -> None:
         """Initialize a random apply transform.
 
         Args:
@@ -178,67 +176,36 @@ class RandomApply(Transform, Configurable):
         """
         super().__init__()
 
-        self.transform = transform
-        self.p = p
-
-        self._apply: bool | None = None
+        self._transform = transform
+        self._p = p
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
 
     def get_config(self, recursive: bool) -> dict[str, Any]:
-        config: dict[str, Any] = {"p": self.p}
+        config: dict[str, Any] = {"p": self._p}
         if recursive:
-            config["transform"] = utils.get_config(self.transform, recursive)
+            config["transform"] = utils.get_config(self._transform, recursive)
 
         return config
-
-    def transform_image(self, image: Image) -> Image:
-        apply = self._apply if self._apply is not None else self._choose_apply()
-
-        if apply:
-            image = self.transform.transform_image(image)
-
-        return image
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        apply = self._apply if self._apply is not None else self._choose_apply()
-
-        if apply:
-            boxes = self.transform.transform_boxes(boxes)
-
-        return boxes
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._apply = self._choose_apply()
-        if self._apply:
-            self.transform.__enter__()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        if self._apply is None:
-            return
-
-        if self._apply:
-            self.transform.__exit__(exc_type, exc_value, traceback)
-
-        self._apply = None
 
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _choose_apply(self) -> bool:
-        return random.random() < self.p
+    def _get_parameters(self) -> RandomApplyParameters[T]:
+        apply = random.random() < self._p
+        child_params = self._transform._get_parameters()
+        return RandomApplyParameters(apply, child_params)
+
+    def _apply_to_image(
+        self, image: Image, parameters: RandomApplyParameters[T]
+    ) -> Image:
+        if parameters.apply:
+            image = self._transform._apply_to_image(image, parameters.child_params)
+
+        return image
 
 
 # --------------------------------------------------------------------------- #
@@ -246,20 +213,26 @@ class RandomApply(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class RandomChoice(Transform, Configurable):
+@dataclass(frozen=True)
+class RandomChoiceParameters:
+    apply_index: int
+    child_params: Any
+
+
+class RandomChoice(Transform[RandomChoiceParameters], Configurable):
     """Choose a transform to apply at random."""
 
     def __init__(
         self,
-        transforms: Sequence[Transform],
+        transforms: Sequence[Transform[Any]],
         p: Sequence[float] | None = None,
     ) -> None:
         """Initialize a random choice transform.
 
         Args:
             transforms: A sequence of transforms to choose from.
-            p: The probabilities to choose each transform. If `None`, all transforms
-                will be chosen with equal probability.
+            p: The probabilities to choose each transform. If `None`, each transform
+                is chosen with equal probability.
         """
         super().__init__()
 
@@ -277,61 +250,43 @@ class RandomChoice(Transform, Configurable):
             if total != 1:
                 p = [probability / total for probability in p]
 
-        self.transforms = transforms
-        self.p = p
-
-        self._apply_index: int | None = None
+        self._transforms = transforms
+        self._p = p
 
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
 
     def get_config(self, recursive: bool) -> dict[str, Any]:
-        config: dict[str, Any] = {"p": self.p}
+        config: dict[str, Any] = {"p": self._p}
         if recursive:
             config["transforms"] = [
-                utils.get_config(transform, recursive) for transform in self.transforms
+                utils.get_config(transform, recursive) for transform in self._transforms
             ]
 
         return config
-
-    def transform_image(self, image: Image) -> Image:
-        apply_index = (
-            self._apply_index if self._apply_index is not None else self._choose_index()
-        )
-
-        return self.transforms[apply_index].transform_image(image)
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        apply_index = (
-            self._apply_index if self._apply_index is not None else self._choose_index()
-        )
-
-        return self.transforms[apply_index].transform_boxes(boxes)
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._apply_index = self._choose_index()
-        self.transforms[self._apply_index].__enter__()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        if self._apply_index is None:
-            return
-
-        self.transforms[self._apply_index].__exit__(exc_type, exc_value, traceback)
-        self._apply_index = None
 
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _choose_index(self) -> int:
-        return random.choices(range(len(self.transforms)), weights=self.p)[0]
+    def _get_parameters(self) -> RandomChoiceParameters:
+        apply_index = random.choices(range(len(self._transforms)), weights=self._p)[0]
+        child_params = self._transforms[apply_index]._get_parameters()
+        return RandomChoiceParameters(apply_index, child_params)
+
+    def _apply_to_image(
+        self,
+        image: Image,
+        parameters: RandomChoiceParameters,
+    ) -> Image:
+        transform = self._transforms[parameters.apply_index]
+        return transform._apply_to_image(image, parameters.child_params)
+
+    def _apply_to_boxes(
+        self,
+        boxes: BoundingBoxes,
+        parameters: RandomChoiceParameters,
+    ) -> BoundingBoxes:
+        transform = self._transforms[parameters.apply_index]
+        return transform._apply_to_boxes(boxes, parameters.child_params)

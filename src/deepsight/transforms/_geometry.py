@@ -10,7 +10,6 @@
 
 import random
 from dataclasses import dataclass
-from types import TracebackType
 from typing import Any
 
 from deepsight import utils
@@ -30,7 +29,7 @@ from ._base import Transform
 # --------------------------------------------------------------------------- #
 
 
-class Resize(Transform, Configurable):
+class Resize(Transform[None], Configurable):
     """Resize the input image to the given size."""
 
     # ----------------------------------------------------------------------- #
@@ -75,14 +74,21 @@ class Resize(Transform, Configurable):
             "antialias": self.antialias,
         }
 
-    def transform_image(self, image: Image) -> Image:
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
+
+    def _get_parameters(self) -> None:
+        return None
+
+    def _apply_to_image(self, image: Image, parameters: None) -> Image:
         return image.resize(
             self.size,
             interpolation_mode=self.interpolation,
             antialias=self.antialias,
         )
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def _apply_to_boxes(self, boxes: BoundingBoxes, parameters: None) -> BoundingBoxes:
         return boxes.resize(self.size)
 
 
@@ -91,7 +97,7 @@ class Resize(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class RandomResize(Transform, Configurable):
+class RandomResize(Transform[int], Configurable):
     """Resize the input image to a random size within the given range.
 
     The image is resized to a square with a length randomly chosen in the range
@@ -125,8 +131,6 @@ class RandomResize(Transform, Configurable):
         self._interpolation = InterpolationMode(interpolation)
         self._antialias = antialias
 
-        self._size: int | None = None
-
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
@@ -139,41 +143,22 @@ class RandomResize(Transform, Configurable):
             "antialias": self._antialias,
         }
 
-    def transform_image(self, image: Image) -> Image:
-        size = self._size or self._choose_size()
-
-        return image.resize(
-            (size, size),
-            interpolation_mode=self._interpolation,
-            antialias=self._antialias,
-        )
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        size = self._size or self._choose_size()
-
-        return boxes.resize((size, size))
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._size = self._choose_size()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self._size = None
-
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _choose_size(self) -> int:
+    def _get_parameters(self) -> int:
         return random.randint(self._min_size, self._max_size)
+
+    def _apply_to_image(self, image: Image, parameters: int) -> Image:
+        return image.resize(
+            (parameters, parameters),
+            interpolation_mode=self._interpolation,
+            antialias=self._antialias,
+        )
+
+    def _apply_to_boxes(self, boxes: BoundingBoxes, parameters: int) -> BoundingBoxes:
+        return boxes.resize((parameters, parameters))
 
 
 # --------------------------------------------------------------------------- #
@@ -181,7 +166,7 @@ class RandomResize(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class ShortestSideResize(Transform, Configurable):
+class ShortestSideResize(Transform[None], Configurable):
     """Resize the input image so that the shortest side is of the given size."""
 
     # ----------------------------------------------------------------------- #
@@ -215,10 +200,10 @@ class ShortestSideResize(Transform, Configurable):
         if max_size is not None and size > max_size:
             raise ValueError("`size` must be less than or equal to `max_size`.")
 
-        self.size = size
-        self.max_size = max_size
-        self.interpolation = InterpolationMode(interpolation)
-        self.antialias = antialias
+        self._size = size
+        self._max_size = max_size
+        self._interpolation = InterpolationMode(interpolation)
+        self._antialias = antialias
 
     # ----------------------------------------------------------------------- #
     # Public Methods
@@ -226,35 +211,38 @@ class ShortestSideResize(Transform, Configurable):
 
     def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
-            "size": self.size,
-            "max_size": self.max_size,
-            "interpolation": str(self.interpolation),
-            "antialias": self.antialias,
+            "size": self._size,
+            "max_size": self._max_size,
+            "interpolation": str(self._interpolation),
+            "antialias": self._antialias,
         }
-
-    def transform_image(self, image: Image) -> Image:
-        return image.resize(
-            size=self._compute_size(image.size),
-            interpolation_mode=self.interpolation,
-            antialias=self.antialias,
-        )
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        return boxes.resize(self._compute_size(boxes.image_size))
 
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
+    def _get_parameters(self) -> None:
+        return None
+
     def _compute_size(self, size: tuple[int, int]) -> tuple[int, int]:
-        ratio = self.size / min(size)
-        if self.max_size is not None:
-            ratio = min(self.max_size / max(size), ratio)
+        ratio = self._size / min(size)
+        if self._max_size is not None:
+            ratio = min(self._max_size / max(size), ratio)
 
         new_height = int(size[0] * ratio)
         new_width = int(size[1] * ratio)
 
         return new_height, new_width
+
+    def _apply_to_image(self, image: Image, parameters: None) -> Image:
+        return image.resize(
+            size=self._compute_size(image.size),
+            interpolation_mode=self._interpolation,
+            antialias=self._antialias,
+        )
+
+    def _apply_to_boxes(self, boxes: BoundingBoxes, parameters: None) -> BoundingBoxes:
+        return boxes.resize(self._compute_size(boxes.image_size))
 
 
 # --------------------------------------------------------------------------- #
@@ -262,7 +250,7 @@ class ShortestSideResize(Transform, Configurable):
 # --------------------------------------------------------------------------- #
 
 
-class RandomShortestSideResize(Transform, Configurable):
+class RandomShortestSideResize(Transform[int], Configurable):
     """Resize the input image choosing a random size for the shorter edge."""
 
     def __init__(
@@ -321,42 +309,11 @@ class RandomShortestSideResize(Transform, Configurable):
             "antialias": self._antialias,
         }
 
-    def transform_image(self, image: Image) -> Image:
-        size = self._size or self._choose_size()
-        size = self._compute_size(size, image.size)
-
-        return image.resize(
-            size=size,
-            interpolation_mode=self._interpolation,
-            antialias=self._antialias,
-        )
-
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        size = self._size or self._choose_size()
-        size = self._compute_size(size, boxes.image_size)
-
-        return boxes.resize(size)
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._size = self._choose_size()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self._size = None
-
     # ----------------------------------------------------------------------- #
     # Private Methods
     # ----------------------------------------------------------------------- #
 
-    def _choose_size(self) -> int:
+    def _get_parameters(self) -> int:
         return random.randint(self._min_shortest_side, self._max_shortest_side)
 
     def _compute_size(
@@ -373,22 +330,38 @@ class RandomShortestSideResize(Transform, Configurable):
 
         return new_height, new_width
 
+    def _apply_to_image(self, image: Image, parameters: int) -> Image:
+        size = self._compute_size(parameters, image.size)
+        return image.resize(
+            size=size,
+            interpolation_mode=self._interpolation,
+            antialias=self._antialias,
+        )
+
+    def _apply_to_boxes(self, boxes: BoundingBoxes, parameters: int) -> BoundingBoxes:
+        size = self._compute_size(parameters, boxes.image_size)
+        return boxes.resize(size)
+
 
 # --------------------------------------------------------------------------- #
 # Horizontal Flip
 # --------------------------------------------------------------------------- #
 
 
-class HorizontalFlip(Transform):
+class HorizontalFlip(Transform[None]):
     """Flip the input image horizontally."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
 
-    def transform_image(self, image: Image) -> Image:
+    def _get_parameters(self) -> None:
+        return None
+
+    def _apply_to_image(self, image: Image, parameters: None) -> Image:
         return image.horizontal_flip()
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
+    def _apply_to_boxes(self, boxes: BoundingBoxes, parameters: None) -> BoundingBoxes:
         return boxes.horizontal_flip()
 
 
@@ -397,15 +370,16 @@ class HorizontalFlip(Transform):
 # --------------------------------------------------------------------------- #
 
 
-class RandomCrop(Transform, Configurable):
-    """Crop a region of the input image at a random position and size."""
+@dataclass(frozen=True)
+class RandomCropParameters:
+    height: int
+    width: int
+    top: float
+    left: float
 
-    @dataclass
-    class _Params:
-        height: int
-        width: int
-        top: float
-        left: float
+
+class RandomCrop(Transform[RandomCropParameters], Configurable):
+    """Crop a region of the input image at a random position and size."""
 
     def __init__(
         self,
@@ -437,8 +411,6 @@ class RandomCrop(Transform, Configurable):
         self._width = utils.to_2tuple(width)
         self._padding_mode = padding_mode
 
-        self._params: RandomCrop._Params | None = None
-
     # ----------------------------------------------------------------------- #
     # Public Methods
     # ----------------------------------------------------------------------- #
@@ -450,18 +422,28 @@ class RandomCrop(Transform, Configurable):
             "padding_mode": str(self._padding_mode),
         }
 
-    def transform_image(self, image: Image) -> Image:
-        params = self._params or self._choose_params()
+    # ----------------------------------------------------------------------- #
+    # Private Methods
+    # ----------------------------------------------------------------------- #
 
+    def _get_parameters(self) -> RandomCropParameters:
+        return RandomCropParameters(
+            height=random.randint(self._height[0], self._height[1]),
+            width=random.randint(self._width[0], self._width[1]),
+            top=random.random(),
+            left=random.random(),
+        )
+
+    def _apply_to_image(self, image: Image, parameters: RandomCropParameters) -> Image:
         pad_top, pad_left, pad_bottom, pad_right = 0, 0, 0, 0
 
-        if image.height < params.height:
-            diff = params.height - image.height
+        if image.height < parameters.height:
+            diff = parameters.height - image.height
             pad_top = diff // 2
             pad_bottom = diff - pad_top
 
-        if image.width < params.width:
-            diff = params.width - image.width
+        if image.width < parameters.width:
+            diff = parameters.width - image.width
             pad_left = diff // 2
             pad_right = diff - pad_left
 
@@ -473,52 +455,27 @@ class RandomCrop(Transform, Configurable):
             mode=self._padding_mode,
         )
 
-        top = int(params.top * (image.height - params.height + 1))
-        left = int(params.left * (image.width - params.width + 1))
+        top = int(parameters.top * (image.height - parameters.height + 1))
+        left = int(parameters.left * (image.width - parameters.width + 1))
 
         return image.crop(
             top=top,
             left=left,
-            bottom=top + params.height,
-            right=left + params.width,
+            bottom=top + parameters.height,
+            right=left + parameters.width,
         )
 
-    def transform_boxes(self, boxes: BoundingBoxes) -> BoundingBoxes:
-        params = self._params or self._choose_params()
-
-        top = int(params.top * (boxes.image_size[0] - params.height + 1))
-        left = int(params.left * (boxes.image_size[1] - params.width + 1))
+    def _apply_to_boxes(
+        self,
+        boxes: BoundingBoxes,
+        parameters: RandomCropParameters,
+    ) -> BoundingBoxes:
+        top = int(parameters.top * (boxes.image_size[0] - parameters.height + 1))
+        left = int(parameters.left * (boxes.image_size[1] - parameters.width + 1))
 
         return boxes.crop(
             top=top,
             left=left,
-            bottom=top + params.height,
-            right=left + params.width,
-        )
-
-    # ----------------------------------------------------------------------- #
-    # Magic Methods
-    # ----------------------------------------------------------------------- #
-
-    def __enter__(self) -> None:
-        self._params = self._choose_params()
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self._params = None
-
-    # ----------------------------------------------------------------------- #
-    # Private Methods
-    # ----------------------------------------------------------------------- #
-
-    def _choose_params(self) -> _Params:
-        return RandomCrop._Params(
-            height=random.randint(self._height[0], self._height[1]),
-            width=random.randint(self._width[0], self._width[1]),
-            top=random.random(),
-            left=random.random(),
+            bottom=top + parameters.height,
+            right=left + parameters.width,
         )
