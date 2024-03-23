@@ -4,7 +4,7 @@
 from ._logging import get_library_logger
 from ._misc import (
     full_class_name,
-    get_configs,
+    get_config,
     to_2tuple,
     to_set,
     to_tuple,
@@ -17,7 +17,7 @@ __all__ = [
     "get_library_logger",
     # _misc
     "full_class_name",
-    "get_configs",
+    "get_config",
     "to_2tuple",
     "to_set",
     "to_tuple",

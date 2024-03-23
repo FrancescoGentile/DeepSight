@@ -6,8 +6,7 @@ from typing import Any
 from torch.optim import Optimizer
 
 from deepsight.training import EpochPhaseTimestamp
-from deepsight.typing import Configurable, StateDict, Stateful
-from deepsight.typing._types import Configs
+from deepsight.typing import Configurable, Stateful
 
 from ._scheduler import LRScheduler
 
@@ -52,16 +51,16 @@ class LinearLR(LRScheduler, Configurable, Stateful):
         factor = 1 - (step - self._start_step) / self._steps
         return tuple(lr * factor for lr in self._start_lrs)
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {"steps": self._steps}
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "start_step": self._start_step,
             "start_lrs": self._start_lrs,
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._start_step = state_dict["start_step"]
         self._start_lrs = state_dict["start_lrs"]
 

@@ -11,10 +11,11 @@
 import random
 from collections.abc import Iterable, Sequence
 from types import TracebackType
+from typing import Any
 
 from deepsight import utils
 from deepsight.structures import BoundingBoxes, Image
-from deepsight.typing import Configs, Configurable
+from deepsight.typing import Configurable
 
 from ._base import Transform
 
@@ -40,13 +41,13 @@ class SequentialOrder(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         if not recursive:
             return {}
 
         return {
             "transforms": [
-                utils.get_configs(transform, recursive) for transform in self.transforms
+                utils.get_config(transform, recursive) for transform in self.transforms
             ]
         }
 
@@ -104,13 +105,13 @@ class RandomOrder(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         if not recursive:
             return {}
 
         return {
             "transforms": [
-                utils.get_configs(transform, recursive) for transform in self.transforms
+                utils.get_config(transform, recursive) for transform in self.transforms
             ]
         }
 
@@ -186,12 +187,12 @@ class RandomApply(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
-        configs: Configs = {"p": self.p}
+    def get_config(self, recursive: bool) -> dict[str, Any]:
+        config: dict[str, Any] = {"p": self.p}
         if recursive:
-            configs["transform"] = utils.get_configs(self.transform, recursive)
+            config["transform"] = utils.get_config(self.transform, recursive)
 
-        return configs
+        return config
 
     def transform_image(self, image: Image) -> Image:
         apply = self._apply if self._apply is not None else self._choose_apply()
@@ -285,14 +286,14 @@ class RandomChoice(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
-        configs: Configs = {"p": self.p}
+    def get_config(self, recursive: bool) -> dict[str, Any]:
+        config: dict[str, Any] = {"p": self.p}
         if recursive:
-            configs["transforms"] = [
-                utils.get_configs(transform, recursive) for transform in self.transforms
+            config["transforms"] = [
+                utils.get_config(transform, recursive) for transform in self.transforms
             ]
 
-        return configs
+        return config
 
     def transform_image(self, image: Image) -> Image:
         apply_index = (

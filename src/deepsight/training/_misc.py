@@ -4,11 +4,11 @@
 import enum
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Self
+from typing import Any, Literal, Self
 
 import torch
 
-from deepsight.typing import Configs, Configurable, Loss, Losses, str_enum
+from deepsight.typing import Configurable, Tensor, str_enum
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class ClipGradNorm(Configurable):
 
     max_norm: float
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {"max_norm": self.max_norm}
 
 
@@ -27,7 +27,7 @@ class ClipGradValue(Configurable):
 
     value: float
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {"value": self.value}
 
 
@@ -38,7 +38,11 @@ class BatchLosses:
     # Constructor and Factory Methods
     # ----------------------------------------------------------------------- #
 
-    def __init__(self, losses: Losses, batch_size: int) -> None:
+    def __init__(
+        self,
+        losses: dict[str, Tensor[Literal[""], float]],
+        batch_size: int,
+    ) -> None:
         self._losses = losses
         self._batch_size = batch_size
 
@@ -72,11 +76,11 @@ class BatchLosses:
         """Return an iterable over the loss names."""
         return self._losses.keys()
 
-    def values(self) -> Iterable[Loss]:
+    def values(self) -> Iterable[Tensor[Literal[""], float]]:
         """Return an iterable over the loss values."""
         return self._losses.values()
 
-    def items(self) -> Iterable[tuple[str, Loss]]:
+    def items(self) -> Iterable[tuple[str, Tensor[Literal[""], float]]]:
         """Return an iterable over the losses."""
         return self._losses.items()
 
@@ -84,10 +88,10 @@ class BatchLosses:
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    def __getitem__(self, name: str) -> Loss:
+    def __getitem__(self, name: str) -> Tensor[Literal[""], float]:
         return self._losses[name]
 
-    def __setitem__(self, name: str, value: Loss) -> None:
+    def __setitem__(self, name: str, value: Tensor[Literal[""], float]) -> None:
         self._losses[name] = value
 
 

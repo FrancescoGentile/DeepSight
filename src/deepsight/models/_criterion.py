@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from deepsight.data import Batch
-from deepsight.typing import Losses
+from deepsight.typing import Tensor
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,9 @@ class Criterion[O, A](Protocol):
         """
         ...
 
-    def compute(self, output: O, annotations: Batch[A]) -> Losses:
+    def compute(
+        self, output: O, annotations: Batch[A]
+    ) -> dict[str, Tensor[Literal[""], float]]:
         """Compute the losses.
 
         Args:

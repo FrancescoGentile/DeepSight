@@ -6,8 +6,6 @@ from typing import Any, Protocol, Self
 
 import torch
 
-from ._types import Configs, StateDict
-
 
 @typing.runtime_checkable
 class Moveable(Protocol):
@@ -35,7 +33,7 @@ class Moveable(Protocol):
 class Configurable(Protocol):
     """An interface for objects that can be configured."""
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         """Get the configuration of this object.
 
         Args:
@@ -51,11 +49,11 @@ class Configurable(Protocol):
 class Stateful(Protocol):
     """An interface for objects that have a state."""
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         """Get the state of this object."""
         ...
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         """Load the state of this object."""
         ...
 

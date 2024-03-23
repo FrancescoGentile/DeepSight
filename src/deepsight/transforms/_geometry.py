@@ -11,6 +11,7 @@
 import random
 from dataclasses import dataclass
 from types import TracebackType
+from typing import Any
 
 from deepsight import utils
 from deepsight.structures import (
@@ -20,7 +21,7 @@ from deepsight.structures import (
     InterpolationMode,
     PaddingMode,
 )
-from deepsight.typing import Configs, Configurable
+from deepsight.typing import Configurable
 
 from ._base import Transform
 
@@ -67,7 +68,7 @@ class Resize(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "size": self.size,
             "interpolation": str(self.interpolation),
@@ -130,7 +131,7 @@ class RandomResize(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "min_size": self._min_size,
             "max_size": self._max_size,
@@ -223,7 +224,7 @@ class ShortestSideResize(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "size": self.size,
             "max_size": self.max_size,
@@ -311,7 +312,7 @@ class RandomShortestSideResize(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "min_shortest_side": self._min_shortest_side,
             "max_shortest_side": self._max_shortest_side,
@@ -442,7 +443,7 @@ class RandomCrop(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "height": self._height,
             "width": self._width,

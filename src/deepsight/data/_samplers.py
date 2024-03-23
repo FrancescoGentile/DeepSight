@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 import torch
 
-from deepsight.typing import StateDict, Stateful
+from deepsight.typing import Stateful
 
 
 class Sampler[T](Stateful, Protocol):
@@ -42,10 +42,10 @@ class SequentialSampler(Sampler[int]):
     # Public Methods
     # ------------------------------------------------------------------------- #
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {"last_idx": self._last_idx}
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._last_idx = state_dict["last_idx"]
 
     # ------------------------------------------------------------------------- #
@@ -79,10 +79,10 @@ class RandomSampler(Sampler[int]):
     # Public Methods
     # ------------------------------------------------------------------------- #
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {"permutation": self._permutation, "last_idx": self._last_idx}
 
-    def load_state_dict(self, state_dict: StateDict) -> None:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         self._permutation = state_dict["permutation"]
         self._last_idx = state_dict["last_idx"]
 
@@ -114,10 +114,10 @@ class BatchSampler(Sampler[list[int]]):
     # Public Methods
     # ------------------------------------------------------------------------- #
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return self._sampler.state_dict()
 
-    def load_state_dict(self, state_dict: StateDict) -> None:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         self._sampler.load_state_dict(state_dict)
 
     # ------------------------------------------------------------------------- #

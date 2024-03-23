@@ -4,7 +4,7 @@
 import enum
 import os
 import pathlib
-from typing import Annotated, Any, Literal, LiteralString
+from typing import Annotated, LiteralString
 
 import torch
 
@@ -25,15 +25,3 @@ type Tensor[S: LiteralString, DT] = Annotated[torch.Tensor, S, DT]
 
 type SparseTensor[S: LiteralString, DT] = Annotated[torch.Tensor, S, DT]
 """A sparse tensor with an annotated shape and dtype."""
-
-type Loss = Tensor[Literal[""], float]
-"""A loss is a scalar float tensor."""
-
-type Losses = dict[str, Loss]
-"""A mapping from loss names to losses."""
-
-type Configs = dict[str, Any]
-"""A dictionary of configuration values."""
-
-type StateDict = dict[str, Any]
-"""A dictionary of state values."""

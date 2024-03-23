@@ -6,7 +6,7 @@ from typing import Any, Literal, Protocol
 import torch
 from torch import nn
 
-from deepsight.typing import StateDict, Tensor
+from deepsight.typing import Tensor
 
 from ._module import Module
 
@@ -181,7 +181,7 @@ class FrozenBatchNorm2d(Module):
 
     def _load_from_state_dict(
         self,
-        state_dict: StateDict,
+        state_dict: dict[str, Any],
         prefix: str,
         local_metadata: dict[str, Any],
         strict: bool,

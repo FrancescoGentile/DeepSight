@@ -8,7 +8,7 @@ from typing import Any
 from deepsight import utils
 from deepsight.training import BatchLosses, EpochPhase, State, TrainingPhase
 from deepsight.training.callbacks import Callback
-from deepsight.typing import StateDict, Stateful
+from deepsight.typing import Stateful
 
 
 class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
@@ -135,10 +135,10 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             handler.close()
             self._logger.removeHandler(handler)
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {"losses": self._losses}
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._losses = state_dict["losses"]
 
     # ----------------------------------------------------------------------- #

@@ -11,9 +11,10 @@
 import math
 import random
 from types import TracebackType
+from typing import Any
 
 from deepsight.structures import Image
-from deepsight.typing import Configs, Configurable
+from deepsight.typing import Configurable
 
 from ._base import Transform
 
@@ -82,7 +83,7 @@ class ColorJitter(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "brightness": self._brightness,
             "contrast": self._contrast,

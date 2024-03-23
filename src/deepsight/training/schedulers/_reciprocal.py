@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections.abc import Sequence
+from typing import Any
 
 from torch.optim import Optimizer
 
 from deepsight.training import EpochPhaseTimestamp
 from deepsight.typing import Configurable
-from deepsight.typing._types import Configs
 
 from ._scheduler import LRScheduler
 
@@ -84,7 +84,7 @@ class ReciprocalLR(LRScheduler, Configurable):
         factor = (self._warmup_steps / (step + 1)) ** 0.5
         return tuple(lr * factor for lr in self._max_lr)
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "max_lr": self._max_lr,
             "warmup_steps": self._warmup_steps,

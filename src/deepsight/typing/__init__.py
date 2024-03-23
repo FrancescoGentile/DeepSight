@@ -3,18 +3,7 @@
 
 from ._decorators import str_enum
 from ._protocols import Configurable, Detachable, Moveable, Stateful
-from ._types import (
-    Configs,
-    DeviceLike,
-    EnumLike,
-    Loss,
-    Losses,
-    Number,
-    PathLike,
-    SparseTensor,
-    StateDict,
-    Tensor,
-)
+from ._types import DeviceLike, EnumLike, Number, PathLike, SparseTensor, Tensor
 
 __all__ = [
     # _decorators
@@ -25,14 +14,10 @@ __all__ = [
     "Moveable",
     "Stateful",
     # _types
-    "Configs",
     "DeviceLike",
     "EnumLike",
-    "Loss",
-    "Losses",
     "PathLike",
     "Number",
     "SparseTensor",
-    "StateDict",
     "Tensor",
 ]

@@ -7,7 +7,7 @@ from typing import Any
 from torch.utils.data import DataLoader as _DataLoader
 
 from deepsight import utils
-from deepsight.typing import Configs, Configurable, StateDict, Stateful
+from deepsight.typing import Configurable, Stateful
 
 from ._batch import Batch
 from ._dataset import Dataset
@@ -86,14 +86,14 @@ class DataLoader[S, A, T](Stateful, Configurable):
     # Public methods
     # ------------------------------------------------------------------------- #
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return self._loader.batch_sampler.state_dict()  # type: ignore
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._loader.batch_sampler.load_state_dict(state_dict)  # type: ignore
 
-    def get_configs(self, recursive: bool) -> Configs:
-        configs: Configs = {
+    def get_config(self, recursive: bool) -> dict[str, Any]:
+        config: dict[str, Any] = {
             "batch_size": self._batch_size,
             "shuffle": self._shuffle,
             "num_workers": self._loader.num_workers,
@@ -101,9 +101,9 @@ class DataLoader[S, A, T](Stateful, Configurable):
         }
 
         if recursive:
-            configs["dataset"] = utils.get_configs(self.dataset, recursive)
+            config["dataset"] = utils.get_config(self.dataset, recursive)
 
-        return configs
+        return config
 
     # ------------------------------------------------------------------------- #
     # Magic methods

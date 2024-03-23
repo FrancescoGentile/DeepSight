@@ -13,7 +13,7 @@ from deepsight import utils
 from deepsight.data import DataLoader
 from deepsight.metrics import Evaluator
 from deepsight.models import Criterion
-from deepsight.typing import Configs, Configurable, Moveable, StateDict, Stateful
+from deepsight.typing import Configurable, Moveable, Stateful
 
 from ._misc import ClipGradNorm, ClipGradValue
 
@@ -116,7 +116,7 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
         else:
             return self._run_interval(state)
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "dataloader": self._dataloader.state_dict(),
             "criterion": self._criterion.state_dict()
@@ -133,7 +133,7 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
             else None,
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._dataloader.load_state_dict(state_dict["dataloader"])
 
         if isinstance(self._criterion, Stateful):
@@ -176,35 +176,34 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
 
         return self
 
-    def get_configs(self, recursive: bool) -> Configs:
-        configs: Configs = {
+    def get_config(self, recursive: bool) -> dict[str, Any]:
+        config: dict[str, Any] = {
             "label": self._label,
             "accumulation_steps": self._accumulation_steps,
         }
 
         if self._clip_gradient is not None:
-            configs["clip_gradient"] = utils.get_configs(self._clip_gradient, recursive)
+            config["clip_gradient"] = utils.get_config(self._clip_gradient, recursive)
 
         if isinstance(self._run_interval, int):
-            configs["run_interval"] = self._run_interval
+            config["run_interval"] = self._run_interval
 
         if recursive:
-            configs["dataloader"] = self._dataloader.get_configs(recursive)
-            configs["criterion"] = utils.get_configs(self._criterion, recursive)
-            configs["optimizers"] = [
-                utils.get_configs(optimizer, recursive)
-                for optimizer in self._optimizers
+            config["dataloader"] = self._dataloader.get_config(recursive)
+            config["criterion"] = utils.get_config(self._criterion, recursive)
+            config["optimizers"] = [
+                utils.get_config(optimizer, recursive) for optimizer in self._optimizers
             ]
             if self._schedulers is not None:
-                configs["schedulers"] = [
-                    utils.get_configs(scheduler, recursive)
+                config["schedulers"] = [
+                    utils.get_config(scheduler, recursive)
                     for scheduler in self._schedulers
                 ]
 
             if self._evaluator is not None:
-                configs["evaluator"] = utils.get_configs(self._evaluator, recursive)
+                config["evaluator"] = utils.get_config(self._evaluator, recursive)
 
-        return configs
+        return config
 
 
 # --------------------------------------------------------------------------- #
@@ -264,7 +263,7 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
         else:
             return self._run_interval(state)
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "dataloader": self._dataloader.state_dict(),
             "evaluator": self._evaluator.state_dict()
@@ -275,7 +274,7 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
             else None,
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._dataloader.load_state_dict(state_dict["dataloader"])
 
         if isinstance(self._evaluator, Stateful):
@@ -294,19 +293,19 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
 
         return self
 
-    def get_configs(self, recursive: bool) -> Configs:
-        configs: Configs = {"label": self._label}
+    def get_config(self, recursive: bool) -> dict[str, Any]:
+        config: dict[str, Any] = {"label": self._label}
 
         if isinstance(self._run_interval, int):
-            configs["run_interval"] = self._run_interval
+            config["run_interval"] = self._run_interval
 
         if recursive:
-            configs["dataloader"] = self._dataloader.get_configs(recursive)
-            configs["evaluator"] = utils.get_configs(self._evaluator, recursive)
+            config["dataloader"] = self._dataloader.get_config(recursive)
+            config["evaluator"] = utils.get_config(self._evaluator, recursive)
             if self._criterion is not None:
-                configs["criterion"] = utils.get_configs(self._criterion, recursive)
+                config["criterion"] = utils.get_config(self._criterion, recursive)
 
-        return configs
+        return config
 
 
 # --------------------------------------------------------------------------- #

@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from typing import Any
 
 import wandb
+
 from deepsight import utils
 from deepsight.training import (
     BatchLosses,
@@ -13,7 +14,7 @@ from deepsight.training import (
     TrainingPhase,
 )
 from deepsight.training.callbacks import Callback
-from deepsight.typing import StateDict, Stateful
+from deepsight.typing import Stateful
 
 
 class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
@@ -73,9 +74,9 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             tags=self._tags,
             notes=self._notes,
             config={
-                "model": utils.get_configs(state.model, recursive=True),
+                "model": utils.get_config(state.model, recursive=True),
                 "phases": [
-                    utils.get_configs(phase, recursive=True) for phase in state.phases
+                    utils.get_config(phase, recursive=True) for phase in state.phases
                 ],
             },
             resume=False if self._id is None else "must",
@@ -185,14 +186,14 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             # can be seen as setting the max_duration of the training at runtime.
             wandb.finish(exit_code=0)
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "id": self._id,
             "total_batch_size": self._total_batch_size,
             "losses": self._losses,
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._id = state_dict["id"]
         self._total_batch_size = state_dict["total_batch_size"]
         self._losses = state_dict["losses"]

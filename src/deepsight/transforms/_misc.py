@@ -9,11 +9,12 @@
 # --------------------------------------------------------------------------- #
 
 from collections.abc import Sequence
+from typing import Any
 
 import torch
 
 from deepsight.structures import BoundingBoxes, Image, ImageMode
-from deepsight.typing import Configs, Configurable
+from deepsight.typing import Configurable
 
 from ._base import Transform
 
@@ -47,7 +48,7 @@ class ToDtype(Transform, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_config(self, recursive: bool) -> dict[str, Any]:
         return {
             "dtype": self.dtype,
             "scale": self.scale,
@@ -79,7 +80,7 @@ class ToMode(Transform):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_configs(self, recursive: bool) -> dict[str, Any]:
         return {"mode": str(self._mode)}
 
     def transform_image(self, image: Image) -> Image:
@@ -117,7 +118,7 @@ class Standardize(Transform):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def get_configs(self, recursive: bool) -> Configs:
+    def get_configs(self, recursive: bool) -> dict[str, Any]:
         return {"mean": self.mean, "std": self.std}
 
     def transform_image(self, image: Image) -> Image:

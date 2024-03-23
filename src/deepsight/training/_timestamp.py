@@ -11,7 +11,7 @@
 from collections.abc import Iterable
 from typing import Any, Self
 
-from deepsight.typing import StateDict, Stateful
+from deepsight.typing import Stateful
 
 from ._phase import EpochPhase
 from ._time import Instant, TimeUnit
@@ -165,7 +165,7 @@ class EpochPhaseTimestamp(Stateful):
 
                 return Instant.from_sample(self.sample_in_epoch, self._label, True)
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "num_epochs": self._num_epochs,
             "batch_in_epoch": self._batch_in_epoch,
@@ -174,7 +174,7 @@ class EpochPhaseTimestamp(Stateful):
             "ended": self._ended,
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._num_epochs = state_dict["num_epochs"]
         self._batch_in_epoch = state_dict["batch_in_epoch"]
         self._sample_in_epoch = state_dict["sample_in_epoch"]
@@ -239,13 +239,13 @@ class Timestamp(Stateful):
 
         self._num_epochs += 1
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         return {
             "num_epochs": self._num_epochs,
             "phases": [phase.state_dict() for phase in self._phases],
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._num_epochs = state_dict["num_epochs"]
         self._phases = tuple(
             EpochPhaseTimestamp(**phase_state_dict)

@@ -17,7 +17,7 @@ from torch.cuda.amp import GradScaler
 
 from deepsight import utils
 from deepsight.models import Model
-from deepsight.typing import Moveable, StateDict, Stateful
+from deepsight.typing import Moveable, Stateful
 
 from ._misc import Precision
 from ._timestamp import EpochPhaseTimestamp, Timestamp
@@ -146,7 +146,7 @@ class State[S, O, A, P](Stateful):
 
         self._current_phase_idx += 1
 
-    def state_dict(self) -> StateDict:
+    def state_dict(self) -> dict[str, Any]:
         state = {
             "model": self._model.state_dict(),
             "phases": [phase.state_dict() for phase in self._phases],
@@ -164,7 +164,7 @@ class State[S, O, A, P](Stateful):
             "state": state,
         }
 
-    def load_state_dict(self, state_dict: StateDict) -> Any:
+    def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         utils.set_rng_state(state_dict["rng"])
 
         state_dict = state_dict["state"]

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections.abc import Iterable
+from typing import Any
 
-from deepsight.typing import Configs, Configurable
+from deepsight.typing import Configurable
 
 
 def to_2tuple[T](value: T | tuple[T, T]) -> tuple[T, T]:
@@ -41,7 +42,7 @@ def full_class_name(obj: object) -> str:
     return f"{obj.__class__.__module__}.{obj.__class__.__name__}"
 
 
-def get_configs(obj: object, recursive: bool = True) -> Configs:
+def get_config(obj: object, recursive: bool = True) -> dict[str, Any]:
     """Get the configuration of an object.
 
     The generated configuration is a dictionary that contains the class name of
@@ -49,11 +50,10 @@ def get_configs(obj: object, recursive: bool = True) -> Configs:
 
     Args:
         obj: The object.
-        recursive: Whether to recursively get the configurations of the
-            sub-objects.
+        recursive: Whether to recursively get the configurations of the sub-objects.
     """
-    configs: Configs = {"__class__": full_class_name(obj)}
+    config = {"__class__": full_class_name(obj)}
     if isinstance(obj, Configurable):
-        configs.update(obj.get_configs(recursive))
+        config.update(obj.get_config(recursive))
 
-    return configs
+    return config

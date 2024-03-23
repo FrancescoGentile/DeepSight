@@ -66,10 +66,8 @@ class Engine[S, O: Detachable, A, P]:
             # So, we hash the engine configurations to generate the new seed to be used
             # to generate the run name.
             configs = {
-                "model": utils.get_configs(model, recursive=True),
-                "phases": [
-                    utils.get_configs(phase, recursive=True) for phase in phases
-                ],
+                "model": utils.get_config(model, recursive=True),
+                "phases": [utils.get_config(phase, recursive=True) for phase in phases],
             }
             digest = hashlib.sha256(pickle.dumps(configs)).hexdigest()
 
