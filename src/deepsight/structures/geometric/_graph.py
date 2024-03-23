@@ -44,19 +44,21 @@ class Graph(Moveable):
                 argument should be `None`.
         """
         if (num_nodes is not None) != (num_edges is not None):
-            raise ValueError(
+            msg = (
                 "The arguments `num_nodes` and `num_edges` must be both `None` or both "
                 "not `None`."
             )
+            raise ValueError(msg)
 
         if num_nodes is None and num_edges is None:
             num_nodes = (node_features.shape[0],)
             num_edges = (adjacency_matrix.indices().shape[1],)
         elif num_nodes is None or num_edges is None:
-            raise ValueError(
+            msg = (
                 "The arguments `num_nodes` and `num_edges` must be both `None` or both "
                 "not `None`."
             )
+            raise ValueError(msg)
 
         adjacency_matrix = adjacency_matrix.to_sparse_coo()
 
@@ -80,7 +82,8 @@ class Graph(Moveable):
             itself.
         """
         if len(graphs) == 0:
-            raise ValueError("Expected at least one graph, got none.")
+            msg = "Expected at least one graph, got none."
+            raise ValueError(msg)
         if len(graphs) == 1:
             return graphs[0]
 
@@ -329,26 +332,29 @@ class Graph(Moveable):
             match node_features.ndim:
                 case 2:
                     if node_features.shape[0] != self._node_features.shape[0]:
-                        raise ValueError(
+                        msg = (
                             f"The number of nodes in the node features must match the "
                             f"number of nodes in the current graph, got "
                             f"{node_features.shape[0]} and "
                             f"{self._node_features.shape[0]} respectively."
                         )
+                        raise ValueError(msg)
                 case 3:
                     node_features_list = []
                     for idx, n_nodes in enumerate(self._num_nodes):
                         node_features_list.append(node_features[idx, :n_nodes])
                     node_features = torch.cat(node_features_list)
                 case _:
-                    raise TypeError("The node features must have 2 or 3 dimensions.")
+                    msg = "The node features must have 2 or 3 dimensions."
+                    raise TypeError(msg)
         else:
             for nf, nnodes in zip(node_features, self._num_nodes, strict=True):
                 if nf.shape[0] != nnodes:
-                    raise ValueError(
+                    msg = (
                         "The number of nodes in each batched graph must remain the "
                         f"same, got {nf.shape[0]} and {nnodes} respectively."
                     )
+                    raise ValueError(msg)
 
             node_features = torch.cat(list(node_features))
 
@@ -358,26 +364,29 @@ class Graph(Moveable):
             match edge_features.ndim:
                 case 2:
                     if edge_features.shape[0] != sum(self._num_edges):
-                        raise ValueError(
+                        msg = (
                             f"The number of edges in the edge features must match the "
                             f"number of edges in the current graph, got "
                             f"{edge_features.shape[0]} and "
                             f"{sum(self._num_edges)} respectively."
                         )
+                        raise ValueError(msg)
                 case 3:
                     edge_features_list = []
                     for idx, n_edges in enumerate(self._num_edges):
                         edge_features_list.append(edge_features[idx, :n_edges])
                     edge_features = torch.cat(edge_features_list)
                 case _:
-                    raise TypeError("The edge features must have 2 or 3 dimensions.")
+                    msg = "The edge features must have 2 or 3 dimensions."
+                    raise TypeError(msg)
         else:
             for ef, nedges in zip(edge_features, self._num_edges, strict=True):
                 if ef.shape[0] != nedges:
-                    raise ValueError(
+                    msg = (
                         "The number of edges in each batched graph must remain the "
                         f"same, got {ef.shape[0]} and {nedges} respectively."
                     )
+                    raise ValueError(msg)
 
             edge_features = torch.cat(list(edge_features))
 
@@ -466,52 +475,55 @@ def _check_tensors(  # noqa: C901
 ) -> None:
     """Check that the tensors have the correct shapes and are on the same device."""
     if nodes.ndim != 2:
-        raise ValueError(f"The nodes tensor must have 2 dimensions, got {nodes.ndim}.")
+        msg = f"The nodes tensor must have 2 dimensions, got {nodes.ndim}."
+        raise ValueError(msg)
 
     if nodes.shape[0] != sum(num_nodes):
-        raise ValueError(
+        msg = (
             f"The number of nodes in the node features must match the sum of the "
             f"number of nodes of each batched graph, got {nodes.shape[0]} and "
             f"{sum(num_nodes)} respectively."
         )
+        raise ValueError(msg)
 
     if adj.shape != (nodes.shape[0], nodes.shape[0]):
-        raise ValueError(
-            f"The adjacency matrix must have shape (N, N), got {adj.shape}."
-        )
+        msg = f"The adjacency matrix must have shape (N, N), got {adj.shape}."
+        raise ValueError(msg)
 
     if adj.indices().shape[1] != sum(num_edges):
-        raise ValueError(
+        msg = (
             f"The number of edges in the adjacency matrix must match the sum of the "
             f"number of edges of each batched graph, got {adj.indices().shape[1]} and "
             f"{sum(num_edges)} respectively."
         )
+        raise ValueError(msg)
 
     if len(num_nodes) != len(num_edges):
-        raise ValueError("Inconsistent number of batches.")
+        msg = "Inconsistent number of batches."
+        raise ValueError(msg)
 
     if nodes.device != adj.device:
-        raise ValueError(
-            "The adjacency matrix and the node features must be on the same device."
-        )
+        msg = "The adjacency matrix and the node features must be on the same device."
+        raise ValueError(msg)
 
     if edges is not None:
         if edges.ndim != 2:
-            raise ValueError(
-                f"The edges tensor must have 2 dimensions, got {edges.ndim}."
-            )
+            msg = f"The edges tensor must have 2 dimensions, got {edges.ndim}."
+            raise ValueError(msg)
 
         if edges.shape[0] != adj.indices().shape[1]:
-            raise ValueError(
+            msg = (
                 f"The number of rows in the edges tensor must match the number of "
                 f"edges in the adjacency matrix, got {edges.shape[0]} and "
                 f"{adj.indices().shape[1]} respectively."
             )
+            raise ValueError(msg)
 
         if edges.device != adj.device:
-            raise ValueError(
+            msg = (
                 "The adjacency matrix and the edge features must be on the same device."
             )
+            raise ValueError(msg)
 
 
 def _check_graphs(graphs: Sequence[Graph]) -> None:
@@ -520,19 +532,23 @@ def _check_graphs(graphs: Sequence[Graph]) -> None:
         graphs[0].node_features().shape[1] != graph.node_features().shape[1]
         for graph in graphs
     ):
-        raise ValueError("All graphs must have the same number of node features.")
+        msg = "All graphs must have the same number of node features."
+        raise ValueError(msg)
 
     if any(graphs[0].device != graph.device for graph in graphs):
-        raise ValueError("All graphs must be on the same device.")
+        msg = "All graphs must be on the same device."
+        raise ValueError(msg)
 
     if any(
         (graphs[0].edge_features() is not None) != (graph.edge_features() is not None)
         for graph in graphs
     ):
-        raise ValueError("Cannot batch graphs some of which have edges and some not.")
+        msg = "Cannot batch graphs some of which have edges and some not."
+        raise ValueError(msg)
 
     if graphs[0].edge_features() is not None and any(
         graphs[0].edge_features().shape[1] != graph.edge_features().shape[1]  # type: ignore
         for graph in graphs
     ):
-        raise ValueError("All graphs must have the same number of edge features.")
+        msg = "All graphs must have the same number of edge features."
+        raise ValueError(msg)

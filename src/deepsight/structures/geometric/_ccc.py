@@ -80,15 +80,17 @@ class CombinatorialComplex:
             returned.
         """
         if len(complexes) == 0:
-            raise ValueError("Expected at least one complex, got none.")
+            msg = "Expected at least one complex, got none."
+            raise ValueError(msg)
         if len(complexes) == 1:
             return complexes[0]
 
         if any(complexes[0].rank != c.rank for c in complexes):
-            raise ValueError(
+            msg = (
                 "Expected all complexes to have the same rank, got "
                 f"{[c.rank for c in complexes]}."
             )
+            raise ValueError(msg)
 
         cell_features: list[torch.Tensor] = []
         boundary_matrices: list[torch.Tensor] = []
@@ -187,7 +189,8 @@ class CombinatorialComplex:
             ValueError: If `rank` is not between 0 and the rank of the complex.
         """
         if not 0 <= rank <= self.rank:
-            raise ValueError(f"Expected a rank between 0 and {self.rank}, got {rank}.")
+            msg = f"Expected a rank between 0 and {self.rank}, got {rank}."
+            raise ValueError(msg)
 
         match batch_mode:
             case BatchMode.CONCAT:
@@ -238,7 +241,8 @@ class CombinatorialComplex:
             ValueError: If `rank` is not between 0 and the rank of the complex.
         """
         if not 0 <= rank <= self.rank:
-            raise ValueError(f"Expected a rank between 0 and {self.rank}, got {rank}.")
+            msg = f"Expected a rank between 0 and {self.rank}, got {rank}."
+            raise ValueError(msg)
 
         match batch_mode:
             case BatchMode.CONCAT:
@@ -306,7 +310,8 @@ class CombinatorialComplex:
             ValueError: If `rank` is not between 1 and the rank of the complex.
         """
         if not 1 <= rank <= self.rank:
-            raise ValueError(f"Expected a rank between 1 and {self.rank}, got {rank}.")
+            msg = f"Expected a rank between 1 and {self.rank}, got {rank}."
+            raise ValueError(msg)
 
         if batch_mode == BatchMode.CONCAT:
             return self._boundary_matrices[rank - 1]
@@ -564,34 +569,36 @@ class CombinatorialComplex:
         cell_features = list(self._cell_features)
         for cell_feature, rank in args:
             if not 0 <= rank <= self.rank:
-                raise ValueError(
-                    f"Expected a rank between 0 and {self.rank}, got {rank}."
-                )
+                msg = f"Expected a rank between 0 and {self.rank}, got {rank}."
+                raise ValueError(msg)
 
             if isinstance(cell_feature, torch.Tensor):
                 match cell_feature.ndim:
                     case 2:
                         if cell_feature.shape[0] != cell_features[rank].shape[0]:
-                            raise ValueError(
+                            msg = (
                                 f"Expected the number of cells of rank {rank} to be "
                                 f"{cell_features[rank].shape[0]}, "
                                 f"got {cell_feature.shape[0]}."
                             )
+                            raise ValueError(msg)
                     case 3:
                         rank_cell_features = []
                         for idx, num_cells in enumerate(self._num_cells[rank]):
                             rank_cell_features.append(cell_feature[idx, :num_cells])
                         cell_feature = torch.cat(rank_cell_features, dim=0)
                     case _:
-                        raise TypeError("Expected a matrix or a batched matrix.")
+                        msg = "Expected a matrix or a batched matrix."
+                        raise TypeError(msg)
             else:
                 # check that the number of cells for each batched complex is correct
                 for cf, ncells in zip(cell_feature, self._num_cells[rank], strict=True):
                     if cf.shape[0] != ncells:
-                        raise ValueError(
+                        msg = (
                             "The number of cells for each batched complex must remain "
                             "the same when replacing the cell features."
                         )
+                        raise ValueError(msg)
 
                 cell_feature = torch.cat(list(cell_feature), dim=0)
 
@@ -660,44 +667,50 @@ def _check_tensors(  # noqa
     boundary_matrices_sizes: Sequence[Sequence[int]],
 ) -> None:
     if len(cell_features) == 0:
-        raise ValueError("Expected at least one cell feature, got none.")
+        msg = "Expected at least one cell feature, got none."
+        raise ValueError(msg)
 
     if len(cell_features) != len(boundary_matrices) + 1:
-        raise ValueError(
+        msg = (
             f"Expected the number of cell features to be one more than the "
             f"number of boundary matrices, got {len(cell_features)} cell "
             f"features and {len(boundary_matrices)} boundary matrices."
         )
+        raise ValueError(msg)
 
     if len(cell_features) != len(num_cells):
-        raise ValueError(
+        msg = (
             f"Expected the number of cell features to be equal to the number "
             f"of cell sizes, got {len(cell_features)} cell features and "
             f"{len(num_cells)} cell sizes."
         )
+        raise ValueError(msg)
 
     if len(boundary_matrices) != len(boundary_matrices_sizes):
-        raise ValueError(
+        msg = (
             f"Expected the number of boundary matrices to be equal to the "
             f"number of boundary matrix sizes, got {len(boundary_matrices)} "
             f"boundary matrices and {len(boundary_matrices_sizes)} boundary "
             f"matrix sizes."
         )
+        raise ValueError(msg)
 
     for r, (cell_feature, cell_splits) in enumerate(
         zip(cell_features, num_cells, strict=True)
     ):
         if cell_feature.ndim != 2:
-            raise ValueError(
+            msg = (
                 f"Expected the cell features of rank {r} to be a matrix, "
                 f"got a tensor of shape {cell_feature.shape}."
             )
+            raise ValueError(msg)
 
         if cell_feature.shape[0] != sum(cell_splits):
-            raise ValueError(
+            msg = (
                 f"Expected the number of cells of rank {r} to be "
                 f"{sum(cell_splits)}, got {cell_feature.shape[0]}."
             )
+            raise ValueError(msg)
 
     for r_minus_1, (boundary_matrix, bm_sizes) in enumerate(
         zip(boundary_matrices, boundary_matrices_sizes, strict=True)
@@ -707,29 +720,34 @@ def _check_tensors(  # noqa
         num_cells_r = cell_features[r_minus_1 + 1].shape[0]
 
         if boundary_matrix.shape != (num_cells_r_minus_1, num_cells_r):
-            raise ValueError(
+            msg = (
                 f"Expected the boundary matrix B_{r_minus_1 + 1} to have shape "
                 f"({num_cells_r_minus_1}, {num_cells_r}), got "
                 f"{boundary_matrix.shape}."
             )
+            raise ValueError(msg)
 
         if boundary_matrix._nnz() != sum(bm_sizes):
-            raise ValueError(
+            msg = (
                 f"Expected the number of non-zero entries in the boundary "
                 f"matrix B_{r_minus_1 + 1} to be {sum(bm_sizes)}, got "
                 f"{boundary_matrix._nnz()}."
             )
+            raise ValueError(msg)
 
     if any(len(num_cells[0]) != len(nc) for nc in num_cells):
-        raise ValueError("Inconsistent number of batches.")
+        msg = "Inconsistent number of batches."
+        raise ValueError(msg)
 
     if any(
         len(boundary_matrices_sizes[0]) != len(bm) for bm in boundary_matrices_sizes
     ):
-        raise ValueError("Inconsistent number of batches.")
+        msg = "Inconsistent number of batches."
+        raise ValueError(msg)
 
     if len(num_cells[0]) != len(boundary_matrices_sizes[0]):
-        raise ValueError("Inconsistent number of batches.")
+        msg = "Inconsistent number of batches."
+        raise ValueError(msg)
 
     # for nc, bm in zip(num_cells, boundary_matrices_sizes, strict=True):
     #     if len(nc) != len(bm):

@@ -21,7 +21,8 @@ class Batch[T](Moveable):
         super().__init__()
 
         if len(samples) == 0:
-            raise ValueError("Batch must contain at least one sample.")
+            msg = "Batch must contain at least one sample."
+            raise ValueError(msg)
 
         self._samples = samples
 
@@ -40,7 +41,8 @@ class Batch[T](Moveable):
             The concatenated batch.
         """
         if len(batches) == 0:
-            raise ValueError("Must provide at least one batch.")
+            msg = "Must provide at least one batch."
+            raise ValueError(msg)
         if len(batches) == 1:
             return batches[0]
 
@@ -95,9 +97,8 @@ class Batch[T](Moveable):
             ValueError: If the batch size is not divisible by `num_splits`.
         """
         if len(self) % num_splits != 0:
-            raise ValueError(
-                f"Batch size {len(self)} is not divisible by {num_splits}."
-            )
+            msg = f"Batch size {len(self)} is not divisible by {num_splits}."
+            raise ValueError(msg)
         split_size = len(self) // num_splits
 
         return tuple(

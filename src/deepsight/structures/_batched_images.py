@@ -125,7 +125,8 @@ class BatchedImages(Detachable, Moveable):
     ) -> Self:
         """Convert a batch of sequences to a batch of images."""
         if len(sequences) != len(image_sizes):
-            raise ValueError("The number of sequences and image_sizes must be equal.")
+            msg = "The number of sequences and image_sizes must be equal."
+            raise ValueError(msg)
 
         if not sequences.is_padded():
             # if the sequence are not padded, it means that all images have the same
@@ -227,9 +228,11 @@ class BatchedImages(Detachable, Moveable):
                 or spatial dimensions than the current data tensor.
         """
         if self.data.shape[0] != data.shape[0]:
-            raise ValueError("The batch size cannot be changed.")
+            msg = "The batch size cannot be changed."
+            raise ValueError(msg)
         if self.data.shape[2:] != data.shape[2:]:
-            raise ValueError("The spatial dimensions cannot be changed.")
+            msg = "The spatial dimensions cannot be changed."
+            raise ValueError(msg)
 
         return self.__class__(
             data,
@@ -374,19 +377,24 @@ def _check_images(images: Sequence[torch.Tensor]) -> None:
         ValueError: If any tensor is not on the same device.
     """
     if len(images) == 0:
-        raise ValueError("At least one image must be provided.")
+        msg = "At least one image must be provided."
+        raise ValueError(msg)
 
     if any(image.ndim != 3 for image in images):
-        raise ValueError("All images must have 3 dimensions.")
+        msg = "All images must have 3 dimensions."
+        raise ValueError(msg)
 
     if any(image.shape[0] != images[0].shape[0] for image in images):
-        raise ValueError("All images must have the same number of channels.")
+        msg = "All images must have the same number of channels."
+        raise ValueError(msg)
 
     if any(image.dtype != images[0].dtype for image in images):
-        raise ValueError("All images must have the same dtype.")
+        msg = "All images must have the same dtype."
+        raise ValueError(msg)
 
     if any(image.device != images[0].device for image in images):
-        raise ValueError("All images must be on the same device.")
+        msg = "All images must be on the same device."
+        raise ValueError(msg)
 
 
 def _check_mask_sizes(
@@ -397,19 +405,25 @@ def _check_mask_sizes(
     """Check that the mask and image sizes are valid."""
     if mask is not None:
         if mask.device != data.device:
-            raise ValueError("The data and mask must be on the same device.")
+            msg = "The data and mask must be on the same device."
+            raise ValueError(msg)
         if mask.dtype != torch.bool:
-            raise ValueError("The mask must be of dtype bool.")
+            msg = "The mask must be of dtype bool."
+            raise ValueError(msg)
         if data.shape[0] != mask.shape[0] or data.shape[2:] != mask.shape[1:]:
-            raise ValueError("The data and mask are incompatible.")
+            msg = "The data and mask are incompatible."
+            raise ValueError(msg)
 
     if image_sizes is not None:
         if len(image_sizes) != len(data):
-            raise ValueError("The data and image_sizes are incompatible.")
+            msg = "The data and image_sizes are incompatible."
+            raise ValueError(msg)
         if any((h > data.shape[2] or w > data.shape[3]) for h, w in image_sizes):
-            raise ValueError("The data and image_sizes are incompatible.")
+            msg = "The data and image_sizes are incompatible."
+            raise ValueError(msg)
 
     if mask is not None and image_sizes is not None:
         mask_image_sizes = _compute_sizes_from_mask(mask)
         if image_sizes != mask_image_sizes:
-            raise ValueError("The image_sizes and mask are incompatible.")
+            msg = "The image_sizes and mask are incompatible."
+            raise ValueError(msg)

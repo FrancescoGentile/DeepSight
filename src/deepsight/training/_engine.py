@@ -16,7 +16,7 @@ from torch.cuda.amp import GradScaler
 from deepsight import utils
 from deepsight.data import Batch
 from deepsight.models import Model
-from deepsight.typing import Detachable
+from deepsight.typing import Detachable, EnumLike
 
 from ._misc import BatchLosses, ClipGradNorm, ClipGradValue, Precision
 from ._phase import EpochPhase, EvaluationPhase, TrainingPhase
@@ -34,16 +34,18 @@ class Engine[S, O: Detachable, A, P]:
         phases: Iterable[EpochPhase[S, O, A, P]],
         callbacks: Iterable["Callback[S, O, A, P]"] | None = None,
         device: torch.device | str | None = None,
-        precision: Precision = Precision.FP32,
+        precision: EnumLike[Precision] = Precision.FP32,
         run_name: str | None = None,
         max_duration: int | Callable[[State[S, O, A, P]], bool] | None = None,
     ) -> None:
         phases = utils.to_tuple(phases)
         if len(phases) == 0:
-            raise ValueError("At least one phase must be specified.")
+            msg = "At least one phase must be specified."
+            raise ValueError(msg)
         labels_counter = Counter(phase.label for phase in phases)
         if any(count > 1 for count in labels_counter.values()):
-            raise ValueError("Duplicate phase labels are not allowed.")
+            msg = "Duplicate phase labels are not allowed."
+            raise ValueError(msg)
 
         callbacks = () if callbacks is None else utils.to_tuple(callbacks)
 
@@ -52,6 +54,7 @@ class Engine[S, O: Detachable, A, P]:
         else:
             device = torch.device(device)
 
+        precision = Precision(precision)
         if device.type == "cuda" and precision.is_mixed_precision():
             scaler = GradScaler()
         else:
@@ -77,7 +80,8 @@ class Engine[S, O: Detachable, A, P]:
             random.setstate(random_rng_state)
 
         elif len(run_name) == 0:
-            raise ValueError("The run name cannot be empty.")
+            msg = "The run name cannot be empty."
+            raise ValueError(msg)
 
         self._state = State(
             run_name=run_name,

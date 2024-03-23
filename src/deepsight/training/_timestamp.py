@@ -151,7 +151,8 @@ class EpochPhaseTimestamp(Stateful):
         match unit:
             case TimeUnit.EPOCH:
                 if from_epoch_begin:
-                    raise ValueError("Cannot convert to epoch from start epoch.")
+                    msg = "Cannot convert to epoch from start epoch."
+                    raise ValueError(msg)
 
                 return Instant.from_epoch(self.num_epochs, self._label)
             case TimeUnit.BATCH:
@@ -235,7 +236,8 @@ class Timestamp(Stateful):
     def next_epoch(self) -> None:
         """Move to the next epoch."""
         if any(not phase.has_ended() for phase in self._phases):
-            raise RuntimeError("Cannot move to next epoch while phase is running.")
+            msg = "Cannot move to next epoch while phase is running."
+            raise RuntimeError(msg)
 
         self._num_epochs += 1
 

@@ -57,7 +57,8 @@ class Resize(Transform[None], Configurable):
 
         size = utils.to_2tuple(size)
         if any(dim <= 0 for dim in size):
-            raise ValueError("All values in `size` must be greater than 0.")
+            msg = "All values in size must be greater than 0."
+            raise ValueError(msg)
 
         self.size = size
         self.interpolation = InterpolationMode(interpolation)
@@ -122,9 +123,8 @@ class RandomResize(Transform[int], Configurable):
         super().__init__()
 
         if not (0 < min_size <= max_size):
-            raise ValueError(
-                "`min_size` must be greater than 0 and less than `max_size`."
-            )
+            msg = "min_size must be greater than 0 and less than max_size."
+            raise ValueError(msg)
 
         self._min_size = min_size
         self._max_size = max_size
@@ -196,9 +196,11 @@ class ShortestSideResize(Transform[None], Configurable):
         super().__init__()
 
         if size <= 0:
-            raise ValueError("`size` must be greater than 0.")
+            msg = "`size` must be greater than 0."
+            raise ValueError(msg)
         if max_size is not None and size > max_size:
-            raise ValueError("`size` must be less than or equal to `max_size`.")
+            msg = "`size` must be less than or equal to `max_size`."
+            raise ValueError(msg)
 
         self._size = size
         self._max_size = max_size
@@ -278,15 +280,15 @@ class RandomShortestSideResize(Transform[int], Configurable):
         super().__init__()
 
         if not (0 < min_shortest_side <= max_shortest_side):
-            raise ValueError(
+            msg = (
                 "`min_shortest_side` must be greater than 0 and less than "
                 "`max_shortest_side`."
             )
+            raise ValueError(msg)
 
         if max_longest_side is not None and max_shortest_side > max_longest_side:
-            raise ValueError(
-                "`max_shortest_side` must be less than or equal to `max_longest_side`."
-            )
+            msg = "max_shortest_side must be less than or equal to max_longest_side."
+            raise ValueError(msg)
 
         self._min_shortest_side = min_shortest_side
         self._max_shortest_side = max_shortest_side

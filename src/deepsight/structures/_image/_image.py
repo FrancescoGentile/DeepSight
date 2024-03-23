@@ -35,17 +35,19 @@ class Image(Detachable, Moveable):
         color_space: EnumLike[ColorSpace],
     ) -> None:
         if data.ndim != 3:
-            raise ValueError(
+            msg = (
                 f"Expected the image to be 3-dimensional. Got {data.ndim}-dimensional "
                 f"image."
             )
+            raise ValueError(msg)
 
         color_space = ColorSpace(color_space)
         if data.shape[0] != color_space.num_channels():
-            raise ValueError(
+            msg = (
                 f"Expected the image to have {color_space.num_channels()} channels. "
                 f"Got {data.shape[0]} channels."
             )
+            raise ValueError(msg)
 
         self._data = data
         self._color_space = color_space
@@ -165,9 +167,8 @@ class Image(Detachable, Moveable):
         if size == self.size:
             return self
         if size[0] <= 0 or size[1] <= 0:
-            raise ValueError(
-                f"Expected `size` to be positive. Got {size[0]}x{size[1]}."
-            )
+            msg = f"Expected `size` to be positive. Got {size[0]}x{size[1]}."
+            raise ValueError(msg)
 
         data = F.interpolate(
             self._data.unsqueeze(0),
@@ -199,15 +200,17 @@ class Image(Detachable, Moveable):
         """
         H, W = self.size  # noqa: N806
         if not (0 <= top < bottom <= H):
-            raise ValueError(
+            msg = (
                 f"Expected `top` and `bottom` to be in the range [0, {H}]. Got "
                 f"{top} and {bottom}."
             )
+            raise ValueError(msg)
         if not (0 <= left < right <= W):
-            raise ValueError(
+            msg = (
                 f"Expected `left` and `right` to be in the range [0, {W}]. Got "
                 f"{left} and {right}."
             )
+            raise ValueError(msg)
 
         data = self._data[:, top:bottom, left:right]
         return self.__class__(data.clone(), self._color_space)
@@ -275,10 +278,11 @@ class Image(Detachable, Moveable):
             ValueError: If `brightness_factor` is negative.
         """
         if brightness_factor < 0:
-            raise ValueError(
+            msg = (
                 f"Expected `brightness_factor` to be non-negative. Got "
                 f"{brightness_factor}."
             )
+            raise ValueError(msg)
 
         bound = utils.max_dtype_value(self.dtype)
         data = self._data.mul(brightness_factor).clamp_(0, bound)
@@ -299,10 +303,11 @@ class Image(Detachable, Moveable):
             ValueError: If `contrast_factor` is negative.
         """
         if contrast_factor < 0:
-            raise ValueError(
+            msg = (
                 f"Expected `contrast_factor` to be non-negative. Got "
                 f"{contrast_factor}."
             )
+            raise ValueError(msg)
 
         match self._color_space:
             case ColorSpace.GRAYSCALE:
@@ -336,10 +341,11 @@ class Image(Detachable, Moveable):
             ValueError: If `saturation_factor` is negative.
         """
         if saturation_factor < 0:
-            raise ValueError(
+            msg = (
                 f"Expected `saturation_factor` to be non-negative. Got "
                 f"{saturation_factor}."
             )
+            raise ValueError(msg)
 
         match self._color_space:
             case ColorSpace.GRAYSCALE:
@@ -370,10 +376,11 @@ class Image(Detachable, Moveable):
             ValueError: If `hue_factor` is not in the range [-0.5, 0.5].
         """
         if not -0.5 <= hue_factor <= 0.5:
-            raise ValueError(
+            msg = (
                 f"Expected `hue_factor` to be in the range [-0.5, 0.5]. Got "
                 f"{hue_factor}."
             )
+            raise ValueError(msg)
 
         match self._color_space:
             case ColorSpace.GRAYSCALE:
@@ -407,22 +414,25 @@ class Image(Detachable, Moveable):
             The standardized image.
         """
         if not self._data.is_floating_point():
-            raise NotImplementedError(
+            msg = (
                 f"Currently, standardization is only supported for floating-point "
                 f"images. Got {self.dtype}."
             )
+            raise NotImplementedError(msg)
 
         if len(mean) != self._data.shape[0]:
-            raise ValueError(
+            msg = (
                 f"The number of values in `mean` must match the number of channels in "
                 f"the image. Got {len(mean)} values for {self._data.shape[0]} channels."
             )
+            raise ValueError(msg)
 
         if len(std) != self._data.shape[0]:
-            raise ValueError(
+            msg = (
                 f"The number of values in `std` must match the number of channels in "
                 f"the image. Got {len(std)} values for {self._data.shape[0]} channels."
             )
+            raise ValueError(msg)
 
         mean_tensor = torch.as_tensor(mean, dtype=self.dtype, device=self.device)
         std_tensor = torch.as_tensor(std, dtype=self.dtype, device=self.device)
@@ -474,9 +484,11 @@ class Image(Detachable, Moveable):
                     value=value,
                 )
             case ReplicatePadding():
-                raise NotImplementedError("Replicate padding is not yet implemented.")
+                msg = "Replicate padding is not yet implemented."
+                raise NotImplementedError(msg)
             case ReflectPadding():
-                raise NotImplementedError("Reflection padding is not yet implemented.")
+                msg = "Reflection padding is not yet implemented."
+                raise NotImplementedError(msg)
 
         return self.__class__(data, self._color_space)
 

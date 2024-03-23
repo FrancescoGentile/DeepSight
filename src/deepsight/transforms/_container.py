@@ -240,11 +240,11 @@ class RandomChoice(Transform[RandomChoiceParameters], Configurable):
             p = [1 / len(transforms)] * len(transforms)
         else:
             if len(p) != len(transforms):
-                raise ValueError(
-                    "The number of probabilities must match the number of transforms."
-                )
+                msg = "The number of probabilities must match the number of transforms."
+                raise ValueError(msg)
             if any(probability <= 0 for probability in p):
-                raise ValueError("Probabilities must be positive.")
+                msg = "Probabilities must be positive."
+                raise ValueError(msg)
 
             total = sum(p)
             if total != 1:

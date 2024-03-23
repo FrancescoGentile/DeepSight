@@ -57,13 +57,15 @@ class ReciprocalLR(LRScheduler, Configurable):
         elif isinstance(max_lr, float | int):
             max_lr = [float(max_lr)] * len(optimizer.param_groups)
         elif len(max_lr) != len(optimizer.param_groups):
-            raise ValueError(
+            msg = (
                 "Expected max_lr to be a float or a sequence of floats "
                 f"with length {len(optimizer.param_groups)}."
             )
+            raise ValueError(msg)
 
         if warmup_steps < 0:
-            raise ValueError("Expected warmup_duration to be non-negative.")
+            msg = "Expected warmup_duration to be non-negative."
+            raise ValueError(msg)
 
         super().__init__(optimizer)
         self._max_lr = tuple(max_lr)

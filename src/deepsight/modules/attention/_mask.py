@@ -43,15 +43,17 @@ class Mask(Moveable):
             mask: The attention mask tensor.
         """
         if mask.ndim != 4:
-            raise ValueError(
+            msg = (
                 f"The attention mask tensor must be 4-dimensional, but the given "
                 f"tensor is {mask.ndim}-dimensional."
             )
+            raise ValueError(msg)
         if not (torch.is_floating_point(mask) or mask.dtype == torch.bool):
-            raise ValueError(
+            msg = (
                 f"The attention mask tensor must be a boolean or float tensor, but "
                 f"the given tensor has dtype {mask.dtype}."
             )
+            raise ValueError(msg)
 
         self._mask = mask
 
@@ -138,7 +140,8 @@ class Mask(Moveable):
                 mask = self._mask.logical_and(other._mask)
             case _:
                 # to make type checker happy
-                raise RuntimeError("Unreachable code.")
+                msg = "Unreachable code."
+                raise RuntimeError(msg)
 
         return self.__class__(mask)
 
@@ -170,7 +173,8 @@ class Mask(Moveable):
                 )
             case _:
                 # to make type checker happy
-                raise RuntimeError("Unreachable code.")
+                msg = "Unreachable code."
+                raise RuntimeError(msg)
 
         return attn_logit
 

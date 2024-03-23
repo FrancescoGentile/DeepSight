@@ -44,12 +44,14 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
     ) -> None:
         optimizers = utils.to_tuple(optimizers)
         if len(optimizers) == 0:
-            raise ValueError("At least one optimizer is required.")
+            msg = "At least one optimizer is required."
+            raise ValueError(msg)
 
         if schedulers is not None:
             schedulers = utils.to_tuple(schedulers)
             if len(schedulers) == 0:
-                raise ValueError("At least one scheduler is required.")
+                msg = "At least one scheduler is required."
+                raise ValueError(msg)
 
         self._label = label
         self._dataloader = dataloader

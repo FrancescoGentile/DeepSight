@@ -42,10 +42,11 @@ class RoIAlign(nn.Module):
         boxes: Sequence[BoundingBoxes],
     ) -> Tensor[Literal["K C h w"], float]:
         if images.shape[0] != len(boxes):
-            raise ValueError(
+            msg = (
                 f"Expected `images` and `boxes` to have the same batch size, "
                 f"got {images.shape[0]} and {len(boxes)} respectively."
             )
+            raise ValueError(msg)
 
         if isinstance(images, BatchedImages):
             image_sizes = images.image_sizes
@@ -56,7 +57,8 @@ class RoIAlign(nn.Module):
             box.image_size != image_size
             for box, image_size in zip(boxes, image_sizes, strict=True)
         ):
-            raise ValueError("Inconsistent image sizes between `boxes` and `images`.")
+            msg = "Inconsistent image sizes between `boxes` and `images`."
+            raise ValueError(msg)
 
         rois = _convert_boxes_to_roi_format(boxes)
         output = _roi_align(

@@ -28,17 +28,19 @@ class BatchedBoundingBoxes(Detachable, Moveable):
     ) -> None:
         """Initialize the bounding boxes."""
         if coordinates.ndim != 3 or coordinates.shape[-1] != 4:
-            raise ValueError(
+            msg = (
                 "The coordinates must have shape (B, N, 4), "
                 f"but got {coordinates.shape}."
             )
+            raise ValueError(msg)
 
         if len(coordinates) != len(image_sizes) != len(num_boxes_per_image):
-            raise ValueError(
+            msg = (
                 "The number of bounding boxes, image sizes, and number of boxes "
                 f"per image must be the same, but got {len(coordinates)}, "
                 f"{len(image_sizes)}, and {len(num_boxes_per_image)}."
             )
+            raise ValueError(msg)
 
         self._coordinates = coordinates.float()
         self._format = BoundingBoxFormat(format)
@@ -50,7 +52,8 @@ class BatchedBoundingBoxes(Detachable, Moveable):
     def batch(cls, boxes: Sequence[BoundingBoxes]) -> Self:
         """Batch a list of bounding boxes into a single tensor."""
         if len(boxes) == 0:
-            raise ValueError("Cannot batch empty list of bounding boxes")
+            msg = "Cannot batch empty list of bounding boxes"
+            raise ValueError(msg)
 
         boxes = [b.convert_like(boxes[0]) for b in boxes]
 
@@ -378,10 +381,11 @@ class BatchedBoundingBoxes(Detachable, Moveable):
             ValueError: If the bounding boxes do not have the same normalization.
         """
         if self._normalized != other._normalized:
-            raise ValueError(
+            msg = (
                 "The bounding boxes must have the same normalization, "
                 f"but got {self._normalized} and {other._normalized}."
             )
+            raise ValueError(msg)
 
         area1 = self.area()
         area2 = other.area()
@@ -402,10 +406,11 @@ class BatchedBoundingBoxes(Detachable, Moveable):
             ValueError: If the bounding boxes do not have the same normalization.
         """
         if self._normalized != other._normalized:
-            raise ValueError(
+            msg = (
                 "The bounding boxes must have the same normalization, "
                 f"but got {self._normalized} and {other._normalized}."
             )
+            raise ValueError(msg)
 
         intersection = self.intersection(other).area()
 
@@ -485,17 +490,19 @@ class BatchedBoundingBoxes(Detachable, Moveable):
     def _check_compatibility(self, other: Self) -> None:
         """Check that the given bounding boxes are compatible."""
         if self._coordinates.shape[:2] != other._coordinates.shape[:2]:
-            raise ValueError(
+            msg = (
                 "The number of bounding boxes must be the same for both objects, "
                 f"but got {self._coordinates.shape[:2]} and "
                 f"{other._coordinates.shape[:2]}."
             )
+            raise ValueError(msg)
 
         if self._image_sizes != other._image_sizes:
-            raise ValueError(
+            msg = (
                 "The image sizes must be the same for both objects, "
                 f"but got {self._image_sizes} and {other._image_sizes}."
             )
+            raise ValueError(msg)
 
     # ----------------------------------------------------------------------- #
     # Private fields

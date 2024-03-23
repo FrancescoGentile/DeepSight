@@ -104,7 +104,8 @@ class RandomSampler(Sampler[int]):
 class BatchSampler(Sampler[list[int]]):
     def __init__(self, sampler: Sampler[int], batch_size: int, drop_last: bool) -> None:
         if batch_size < 1:
-            raise ValueError(f"batch_size must be greater than 0, got {batch_size}.")
+            msg = f"batch_size must be greater than 0, got {batch_size}."
+            raise ValueError(msg)
 
         self._sampler = sampler
         self._batch_size = batch_size

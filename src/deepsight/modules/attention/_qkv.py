@@ -94,10 +94,11 @@ class LinearQKVGenerator(QKVGenerator):
         super().__init__()
 
         if hidden_dim % num_heads != 0:
-            raise ValueError(
+            msg = (
                 f"The hidden dimension ({hidden_dim}) must be divisible by the number "
                 f"of heads ({num_heads})."
             )
+            raise ValueError(msg)
 
         self._num_heads = num_heads
         self.query_proj = nn.Linear(query_dim, hidden_dim)
@@ -230,10 +231,11 @@ class LinearQKVGeneratorWithPrePosAddition(QKVGeneratorWithPos):
         super().__init__()
 
         if hidden_dim % num_heads != 0:
-            raise ValueError(
+            msg = (
                 f"The hidden dimension ({hidden_dim}) must be divisible by the number "
                 f"of heads ({num_heads})."
             )
+            raise ValueError(msg)
 
         self._num_heads = num_heads
         self.query_proj = nn.Linear(query_dim, hidden_dim)
@@ -324,10 +326,11 @@ class LinearQKVGeneratorWithPostPosAddition(QKVGeneratorWithPos):
         super().__init__()
 
         if hidden_dim % num_heads != 0:
-            raise ValueError(
+            msg = (
                 f"The hidden dimension ({hidden_dim}) must be divisible by the number "
                 f"of heads ({num_heads})."
             )
+            raise ValueError(msg)
 
         self._num_heads = num_heads
         self.query_proj = nn.Linear(query_dim, hidden_dim)
@@ -424,10 +427,11 @@ class LinearQKVGeneratorWithPrePosConcat(QKVGeneratorWithPos):
         super().__init__()
 
         if hidden_dim % num_heads != 0:
-            raise ValueError(
+            msg = (
                 f"The hidden dimension ({hidden_dim}) must be divisible by the number "
                 f"of heads ({num_heads})."
             )
+            raise ValueError(msg)
 
         self._num_heads = num_heads
         self.query_proj = nn.Linear(query_dim + query_pos_dim, hidden_dim)
@@ -517,10 +521,11 @@ class LinearQKVGeneratorWithPostPosConcat(QKVGeneratorWithPos):
         super().__init__()
 
         if hidden_dim % num_heads != 0:
-            raise ValueError(
+            msg = (
                 f"The hidden dimension ({hidden_dim}) must be divisible by the number "
                 f"of heads ({num_heads})."
             )
+            raise ValueError(msg)
 
         self._num_heads = num_heads
         self.query_proj = nn.Linear(query_dim, hidden_dim)

@@ -153,10 +153,11 @@ class Encoder(Module):
         take_indices = {i if i >= 0 else len(self.layers) + i for i in return_layers}
         for i in take_indices:
             if i < 0 or i >= len(self.layers):
-                raise IndexError(
+                msg = (
                     f"Index {i} is out of range for the encoder with "
                     f"{len(self.layers)} layers."
                 )
+                raise IndexError(msg)
 
         patches = self.patchify(images)  # (B, D, h, w)
         patch_embed = self.patch_pos_embed(patches)  # (B, D, h, w)

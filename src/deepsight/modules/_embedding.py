@@ -140,9 +140,10 @@ class SinusoidalImagePositionEmbedding(Module):
         super().__init__()
 
         if embed_dim % 2 != 0:
-            raise ValueError(
+            msg = (
                 f"The embedding dimension must be divisible by 2, but got {embed_dim}."
             )
+            raise ValueError(msg)
 
         self.embed_dim = embed_dim
         self.temperature = temperature

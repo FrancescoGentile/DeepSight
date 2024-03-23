@@ -167,7 +167,8 @@ class BatchedSequences(Detachable, Moveable):
                 last dimension).
         """
         if data.shape[:-1] != self._data.shape[:-1]:
-            raise ValueError("The data and mask are incompatible.")
+            msg = "The data and mask are incompatible."
+            raise ValueError(msg)
 
         return self.__class__(
             data,
@@ -281,19 +282,24 @@ def _check_sequences(sequences: Sequence[torch.Tensor]) -> None:
         ValueError: If any sequence is not on the same device.
     """
     if len(sequences) == 0:
-        raise ValueError("At least one sequence must be provided.")
+        msg = "At least one sequence must be provided."
+        raise ValueError(msg)
 
     if any(sequence.ndim != 2 for sequence in sequences):
-        raise ValueError("All sequences must have 2 dimensions.")
+        msg = "All sequences must have 2 dimensions."
+        raise ValueError(msg)
 
     if any(sequence.shape[1] != sequences[0].shape[1] for sequence in sequences):
-        raise ValueError("All sequences must have the same number of features.")
+        msg = "All sequences must have the same number of features."
+        raise ValueError(msg)
 
     if any(sequence.dtype != sequences[0].dtype for sequence in sequences):
-        raise ValueError("All sequences must have the same dtype.")
+        msg = "All sequences must have the same dtype."
+        raise ValueError(msg)
 
     if any(sequence.device != sequences[0].device for sequence in sequences):
-        raise ValueError("All sequences must be on the same device.")
+        msg = "All sequences must be on the same device."
+        raise ValueError(msg)
 
 
 def _check_mask_lengths(
@@ -304,19 +310,25 @@ def _check_mask_lengths(
     """Check that the mask and sequence lengths are valid."""
     if mask is not None:
         if mask.device != data.device:
-            raise ValueError("The data and mask must be on the same device.")
+            msg = "The data and mask must be on the same device."
+            raise ValueError(msg)
         if mask.dtype != torch.bool:
-            raise ValueError("The mask must be of dtype bool.")
+            msg = "The mask must be of dtype bool."
+            raise ValueError(msg)
         if data.shape[:-1] != mask.shape:
-            raise ValueError("The data and mask are incompatible.")
+            msg = "The data and mask are incompatible."
+            raise ValueError(msg)
 
     if sequence_lengths is not None:
         if len(sequence_lengths) != data.shape[0]:
-            raise ValueError("The data and sequence_lengths are incompatible.")
+            msg = "The data and sequence_lengths are incompatible."
+            raise ValueError(msg)
         if any(length > data.shape[1] for length in sequence_lengths):
-            raise ValueError("The data and sequence_lengths are incompatible.")
+            msg = "The data and sequence_lengths are incompatible."
+            raise ValueError(msg)
 
     if mask is not None and sequence_lengths is not None:
         mask_lengths = _compute_lengths_from_mask(mask)
         if mask_lengths != sequence_lengths:
-            raise ValueError("The sequence_lengths and mask are incompatible.")
+            msg = "The sequence_lengths and mask are incompatible."
+            raise ValueError(msg)

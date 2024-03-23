@@ -123,7 +123,8 @@ class Standardize(Transform[None]):
         super().__init__()
 
         if any(value <= 0 for value in std):
-            raise ValueError("All values in `std` must be greater than 0.")
+            msg = "All values in `std` must be greater than 0."
+            raise ValueError(msg)
 
         self.mean = mean
         self.std = std

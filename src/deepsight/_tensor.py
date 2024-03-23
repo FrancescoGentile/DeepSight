@@ -39,7 +39,8 @@ class Tensor[S: LiteralString, DT](torch.Tensor):
             ValueError: If the input numpy array is read-only.
         """
         if ndarray.flags.writeable is False:
-            raise ValueError("The input numpy array is read-only.")
+            msg = "The input numpy array is read-only."
+            raise ValueError(msg)
 
         tensor = torch.from_numpy(ndarray)
         return tensor.as_subclass(cls)

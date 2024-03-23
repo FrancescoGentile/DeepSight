@@ -140,9 +140,8 @@ class State[S, O, A, P](Stateful):
     def next_phase(self) -> None:
         """Moves to the next phase."""
         if not self.current_phase_timestamp.has_ended():
-            raise RuntimeError(
-                "Cannot move to the next phase before the current one has ended."
-            )
+            msg = "Cannot move to the next phase before the current one has ended."
+            raise RuntimeError(msg)
 
         self._current_phase_idx += 1
 

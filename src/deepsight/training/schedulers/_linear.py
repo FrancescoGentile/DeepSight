@@ -27,7 +27,8 @@ class LinearLR(LRScheduler, Configurable, Stateful):
             steps : The number of steps to linearly decay the learning rate.
         """
         if steps <= 0:
-            raise ValueError("Steps must be positive.")
+            msg = "Steps must be positive."
+            raise ValueError(msg)
 
         super().__init__(optimizer)
         self._steps = steps

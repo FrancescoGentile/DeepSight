@@ -39,7 +39,8 @@ def max_dtype_value(dtype: torch.dtype) -> int:
             if dtype.is_floating_point:
                 return 1
             else:
-                raise ValueError(f"Unsupported dtype: {dtype}.")
+                msg = f"Unsupported dtype: {dtype}."
+                raise ValueError(msg)
 
 
 def num_value_bits(dtype: torch.dtype) -> int:
@@ -55,10 +56,11 @@ def num_value_bits(dtype: torch.dtype) -> int:
         case torch.int64:
             return 63
         case _:
-            raise TypeError(
+            msg = (
                 "Number of value bits is only defined for integer dtypes, "
                 f"but got {dtype}."
             )
+            raise TypeError(msg)
 
 
 def rgb_to_grayscale(
@@ -67,9 +69,8 @@ def rgb_to_grayscale(
     preserve_dtype: bool = False,
 ) -> Tensor[Literal["(1|3) H W"], Number]:
     if data.shape[0] != 3:
-        raise ValueError(
-            f"Expected the image to have 3 channels. Got {data.shape[0]} channels."
-        )
+        msg = f"Expected the image to have 3 channels. Got {data.shape[0]} channels."
+        raise ValueError(msg)
 
     orig_dtype = data.dtype
     r, g, b = data.unbind(0)
@@ -207,10 +208,11 @@ def to_dtype(
         if (data.dtype == torch.float32 and dtype in (torch.int32, torch.int64)) or (
             data.dtype == torch.float64 and dtype == torch.int64
         ):
-            raise RuntimeError(
+            msg = (
                 f"The conversion from {data.dtype} to {dtype} cannot be performed "
                 "without loss of precision."
             )
+            raise RuntimeError(msg)
 
         eps = 1e-3
         max_value = float(max_dtype_value(dtype))

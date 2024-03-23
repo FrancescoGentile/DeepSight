@@ -5,7 +5,7 @@ preview = true
 
 [lint]
 select = [
-    "A", "ANN", "B", "C4", "C90", "D", "E", "F", 
+    "A", "ANN", "B", "C4", "C90", "D", "E", "EM", "F", 
     "FA", "G", "I", "ICN", "INP", "G", "N", "PIE", "PYI", 
     "Q", "RSE", "SIM", "T20", "UP", "W"
 ]

@@ -31,7 +31,8 @@ class ColorSpace(enum.Enum):
             case "RGB":
                 return cls.RGB  # type: ignore
             case _:
-                raise ValueError(f"Unsupported PIL mode: {mode}")
+                msg = f"Unsupported PIL mode: {mode}"
+                raise ValueError(msg)
 
     def to_pil_mode(self) -> str:
         """Convert the image mode to a PIL mode.

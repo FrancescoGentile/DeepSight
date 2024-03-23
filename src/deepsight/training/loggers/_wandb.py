@@ -32,7 +32,8 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         if log_phases is not None:
             log_phases = utils.to_tuple(log_phases)
             if len(log_phases) == 0:
-                raise ValueError("At least one phase must be specified.")
+                msg = "At least one phase must be specified."
+                raise ValueError(msg)
         else:
             log_phases = ()
 
@@ -62,7 +63,8 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         all_labels = {phase.label for phase in state.phases}
         for label in self._log_phases:
             if label not in all_labels:
-                raise ValueError(f"Cannot log phase '{label}' as it does not exist.")
+                msg = f"Cannot log phase '{label}' as it does not exist."
+                raise ValueError(msg)
 
         self._total_batch_size = {phase.label: 0 for phase in state.phases}
         self._losses = {phase.label: {} for phase in state.phases}
@@ -102,7 +104,8 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         else:
             for name, value in losses.items():
                 if name not in self._losses[label]:
-                    raise RuntimeError("Losses must be the same for all batches.")
+                    msg = "Losses must be the same for all batches."
+                    raise RuntimeError(msg)
 
                 self._losses[label][name] += value.item() * losses.batch_size
 

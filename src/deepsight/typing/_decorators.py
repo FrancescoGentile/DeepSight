@@ -30,16 +30,20 @@ def str_enum[T: enum.Enum](cls: type[T]) -> type[T]:
     """
     for member in cls:
         if not isinstance(member.value, str):
-            raise ValueError(f"Enum member <{member}> has a non-string value.")
+            msg = f"Enum member <{member}> has a non-string value."
+            raise ValueError(msg)
         if member.name != member.name.upper():
-            raise ValueError(f"Enum member <{member}> has a non-uppercase name.")
+            msg = f"Enum member <{member}> has a non-uppercase name."
+            raise ValueError(msg)
         if member.value != member.value.lower():
-            raise ValueError(f"Enum member <{member}> has a non-lowercase value.")
+            msg = f"Enum member <{member}> has a non-lowercase value."
+            raise ValueError(msg)
         if member.value != member.name.lower():
-            raise ValueError(
+            msg = (
                 f"Enum member <{member}> has a value <{member.value}> "
                 "that is not the lowercase version of its name."
             )
+            raise ValueError(msg)
 
     cls.__str__ = lambda self: self.value.replace("_", "-")  # type: ignore
     cls.__repr__ = lambda self: f"{self.__class__.__name__}.{self.value.upper()}"  # type: ignore

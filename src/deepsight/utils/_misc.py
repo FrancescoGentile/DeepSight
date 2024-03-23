@@ -11,7 +11,8 @@ def to_2tuple[T](value: T | tuple[T, T]) -> tuple[T, T]:
     """Convert a value to a 2-tuple."""
     if isinstance(value, tuple):
         if len(value) != 2:
-            raise ValueError(f"Expected a 2-tuple, got {value}.")
+            msg = f"Expected a 2-tuple, got {value}."
+            raise ValueError(msg)
         return value
 
     return value, value

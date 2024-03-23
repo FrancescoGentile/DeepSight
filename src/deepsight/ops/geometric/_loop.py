@@ -68,9 +68,8 @@ def add_remaining_self_loops(
             num_nodes = size
         case (int(size0), int(size1)):
             if size0 != size1:
-                raise ValueError(
-                    "Cannot add self-loops for non-square adjacency matrices."
-                )
+                msg = "Cannot add self-loops for non-square adjacency matrices."
+                raise ValueError(msg)
             num_nodes = size0
 
     mask = indices[0] != indices[1]
@@ -80,7 +79,8 @@ def add_remaining_self_loops(
 
     if values is not None:
         if fill_value is None:
-            raise ValueError("Expected to fill self-loop values, found None instead.")
+            msg = "Expected to fill self-loop values, found None instead."
+            raise ValueError(msg)
 
         if isinstance(fill_value, Number):
             loop_values = values.new_full((num_nodes,) + values.shape[1:], fill_value)  # type: ignore
@@ -92,10 +92,11 @@ def add_remaining_self_loops(
                 sizes = [num_nodes] + [-1] * loop_values.ndim
                 loop_values = loop_values.unsqueeze(0).expand(*sizes)
             else:
-                raise ValueError(
+                msg = (
                     f"Expected fill_value to have shape {num_nodes, *values.shape[1:]} "
                     f"or {values.shape[1:]}, found {loop_values.shape}."
                 )
+                raise ValueError(msg)
         else:
             loop_values = scatter(
                 values, indices[1], dim=0, dim_output_size=num_nodes, reduce=fill_value

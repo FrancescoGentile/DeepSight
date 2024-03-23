@@ -151,11 +151,14 @@ class Instant:
 
     def _check(self, other: Self, verb: str) -> None:
         if other.unit != self.unit:
-            raise ValueError(f"Cannot {verb} instants of different units.")
+            msg = f"Cannot {verb} instants of different units."
+            raise ValueError(msg)
         if other.phase != self.phase:
-            raise ValueError(f"Cannot {verb} instants from different phases.")
+            msg = f"Cannot {verb} instants from different phases."
+            raise ValueError(msg)
         if other.from_epoch_begin != self.from_epoch_begin:
-            raise ValueError(f"Cannot {verb} instants from different epochs.")
+            msg = f"Cannot {verb} instants from different epochs."
+            raise ValueError(msg)
 
     def _parse(self, other: object) -> Self:
         if isinstance(other, int):
@@ -163,10 +166,11 @@ class Instant:
         if isinstance(other, self.__class__):
             return other
 
-        raise TypeError(
+        msg = (
             f"Expected an int or an {self.__class__.__name__} instance, "
             f"got {type(other)}."
         )
+        raise TypeError(msg)
 
 
 @dataclass(frozen=True)

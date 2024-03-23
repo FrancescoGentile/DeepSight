@@ -154,9 +154,8 @@ def _check_jitter_properties(
             return None
         case float() | int():
             if value < 0:
-                raise ValueError(
-                    f"If {property_name} is a single number, it must be non negative."
-                )
+                msg = f"If {property_name} is a single number, it must be non negative."
+                raise ValueError(msg)
             value = float(value)
             value = (center - value, center + value)
             if clip_first_on_zero:
@@ -165,9 +164,10 @@ def _check_jitter_properties(
             pass
 
     if not bounds[0] <= value[0] <= value[1] <= bounds[1]:
-        raise ValueError(
+        msg = (
             f"{property_name} values should be between {bounds[0]} and {bounds[1]}, "
             f"but got {value}."
         )
+        raise ValueError(msg)
 
     return value

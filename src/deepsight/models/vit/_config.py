@@ -61,16 +61,18 @@ class EncoderConfig:
 
     def __post_init__(self) -> None:
         if self.embed_dim % self.num_heads != 0:
-            raise ValueError(
+            msg = (
                 f"embed_dim ({self.embed_dim}) must be divisible by "
                 f"num_heads ({self.num_heads})."
             )
+            raise ValueError(msg)
 
         if self.num_register_tokens < 0:
-            raise ValueError(
+            msg = (
                 f"num_register_tokens ({self.num_register_tokens}) must be "
                 f"non-negative."
             )
+            raise ValueError(msg)
 
     @classmethod
     def from_variant(cls, variant: Variant) -> Self:

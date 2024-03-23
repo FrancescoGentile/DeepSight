@@ -439,7 +439,8 @@ class BoundingBoxes(Detachable, Moveable):
             ValueError: If the bounding boxes do not have the same normalization.
         """
         if self.normalized != other.normalized:
-            raise ValueError("The bounding boxes must have the same normalization.")
+            msg = "The bounding boxes must have the same normalization."
+            raise ValueError(msg)
 
         area1 = self.area()
         area2 = other.area()
@@ -462,7 +463,8 @@ class BoundingBoxes(Detachable, Moveable):
             ValueError: If the bounding boxes do not have the same normalization.
         """
         if self.normalized != other.normalized:
-            raise ValueError("The bounding boxes must have the same normalization.")
+            msg = "The bounding boxes must have the same normalization."
+            raise ValueError(msg)
 
         return self.intersection(other).area()
 
@@ -613,16 +615,18 @@ class BoundingBoxes(Detachable, Moveable):
             ValueError: If the bounding boxes are not compatible.
         """
         if len(self) != len(other):
-            raise ValueError(
+            msg = (
                 f"The number of bounding boxes must be the same, got {len(self)} "
                 f"and {len(other)}."
             )
+            raise ValueError(msg)
 
         if self.image_size != other.image_size:
-            raise ValueError(
+            msg = (
                 f"The bounding box image size must be the same, got {self.image_size} "
                 f"and {other.image_size}."
             )
+            raise ValueError(msg)
 
     # -----------------------------------------------------------------------  #
     # Private fields
@@ -649,9 +653,9 @@ def _check_coordinates(coords: torch.Tensor) -> None:
         ValueError: If the coordinates are not valid.
     """
     if coords.ndim != 2:
-        raise ValueError(f"The coordinates must be 2-dimensional, got {coords.ndim}.")
+        msg = f"The coordinates must be 2-dimensional, got {coords.ndim}."
+        raise ValueError(msg)
 
     if coords.shape[-1] != 4:
-        raise ValueError(
-            f"The last dimension of coordinates must be 4, got {coords.shape[-1]}."
-        )
+        msg = f"The last dimension of coordinates must be 4, got {coords.shape[-1]}."
+        raise ValueError(msg)

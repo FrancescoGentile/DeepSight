@@ -22,7 +22,8 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         super().__init__()
 
         if not console and output_file is None:
-            raise ValueError("At least one of console or output_file must be True.")
+            msg = "At least one of console or output_file must be True."
+            raise ValueError(msg)
 
         self._level = level
         self._output_file = output_file
@@ -47,9 +48,8 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             self._output_file = self._output_file.format(run_name=state.run_name)
             if Path(self._output_file).exists():
                 if not state.resumed:
-                    raise FileExistsError(
-                        f"The output file '{self._output_file}' already exists."
-                    )
+                    msg = f"The output file '{self._output_file}' already exists."
+                    raise FileExistsError(msg)
                 handler = logging.FileHandler(self._output_file, mode="a")
             else:
                 Path(self._output_file).parent.mkdir(parents=True, exist_ok=True)

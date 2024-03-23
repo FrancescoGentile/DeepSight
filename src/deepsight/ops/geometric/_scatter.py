@@ -106,7 +106,8 @@ def scatter_softmax(
 ) -> Tensor:
     """Scatter softmax operation."""
     if not is_float_tensor(src):
-        raise TypeError("Expected a float tensor.")
+        msg = "Expected a float tensor."
+        raise TypeError(msg)
 
     index = _broadcast(index, src, dim)
     max_value_per_index = scatter_max(src, index, dim, dim_output_size)
