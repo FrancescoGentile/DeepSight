@@ -5,7 +5,7 @@ import abc
 
 from torch.optim import Optimizer
 
-from deepsight.training import EpochPhaseTimestamp
+from deepsight.time import PhaseTimestamp
 
 
 class LRScheduler(abc.ABC):
@@ -20,17 +20,8 @@ class LRScheduler(abc.ABC):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    @abc.abstractmethod
-    def compute_lrs(self, timestamp: EpochPhaseTimestamp) -> tuple[float, ...]:
-        """Compute the learning rates for the current step.
-
-        Args:
-            timestamp: The timestamp of the current phase.
-        """
-        ...
-
-    def step(self, timestamp: EpochPhaseTimestamp) -> None:
-        """Update the learning rate of the optimizer.
+    def step(self, timestamp: PhaseTimestamp) -> None:
+        """Updates the learning rate of the optimizer.
 
         Differently from the PyTorch convention of calling the method `step` after the
         optimizer's `step` method, this method is called before the optimizer's `step`
@@ -40,7 +31,16 @@ class LRScheduler(abc.ABC):
         Args:
             timestamp: The timestamp of the current phase.
         """
-        lrs = self.compute_lrs(timestamp)
+        lrs = self.compute_lrs(timestamp=timestamp)
 
         for param_group, lr in zip(self._optimizer.param_groups, lrs, strict=True):
             param_group["lr"] = lr
+
+    @abc.abstractmethod
+    def compute_lrs(self, timestamp: PhaseTimestamp) -> tuple[float, ...]:
+        """Computes the learning rates for the current step.
+
+        Args:
+            timestamp: The timestamp of the current phase.
+        """
+        ...

@@ -9,18 +9,24 @@ from typing import TYPE_CHECKING, Any, Self
 import torch
 from torch.optim import Optimizer
 
-from deepsight import utils
-from deepsight.data import DataLoader
-from deepsight.metrics import Evaluator
-from deepsight.models import Criterion
-from deepsight.typing import Configurable, Moveable, Stateful
-
+from . import utils
 from ._misc import ClipGradNorm, ClipGradValue
+from .data import DataLoader
+from .metrics import Evaluator
+from .models import Criterion
+from .schedulers import LRScheduler
+from .time import PhaseTimestamp
+from .typing import Configurable, Moveable, Stateful
 
 if TYPE_CHECKING:
-    from deepsight.training.schedulers import LRScheduler
-
     from ._state import State
+
+
+# --------------------------------------------------------------------------- #
+# Phase
+# --------------------------------------------------------------------------- #
+
+type Phase[S, O, A, P] = TrainingPhase[S, O, A, P] | EvaluationPhase[S, O, A, P]
 
 # --------------------------------------------------------------------------- #
 # Training Phase
@@ -28,7 +34,7 @@ if TYPE_CHECKING:
 
 
 class TrainingPhase[S, O, A, P](Stateful, Configurable):
-    """A training-like epoch phase."""
+    """A training-like phase."""
 
     def __init__(
         self,
@@ -42,18 +48,21 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
         run_interval: int | Callable[[State[S, O, A, P]], bool] = 1,
         label: str = "train",
     ) -> None:
+        """Initializes a new training-like phase."""
         optimizers = utils.to_tuple(optimizers)
         if len(optimizers) == 0:
             msg = "At least one optimizer is required."
             raise ValueError(msg)
 
-        if schedulers is not None:
-            schedulers = utils.to_tuple(schedulers)
-            if len(schedulers) == 0:
-                msg = "At least one scheduler is required."
-                raise ValueError(msg)
+        if accumulation_steps < 1:
+            msg = "The number of accumulation steps must be greater than 0."
+            raise ValueError(msg)
+
+        schedulers = utils.to_tuple(schedulers) if schedulers is not None else ()
 
         self._label = label
+        self._running = False
+        self._timestamp = PhaseTimestamp(dataloader.num_batches, dataloader.num_samples)
         self._dataloader = dataloader
         self._criterion = criterion
         self._optimizers = optimizers
@@ -73,6 +82,11 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
         return self._label
 
     @property
+    def timestamp(self) -> PhaseTimestamp:
+        """The timestamp of the phase."""
+        return self._timestamp
+
+    @property
     def dataloader(self) -> DataLoader[S, A, P]:
         """The dataloader of the phase."""
         return self._dataloader
@@ -88,7 +102,7 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
         return self._optimizers
 
     @property
-    def schedulers(self) -> tuple[LRScheduler, ...] | None:
+    def schedulers(self) -> tuple[LRScheduler, ...] | tuple[()]:
         """The schedulers of the phase (if any)."""
         return self._schedulers
 
@@ -111,15 +125,34 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
+    def run(self) -> None:
+        """Runs the phase."""
+        self._running = True
+
+    def stop(self) -> None:
+        """Stops the phase."""
+        if not self._running:
+            msg = "Cannot stop a phase that is not running."
+            raise RuntimeError(msg)
+
+        self._timestamp.terminate_epoch()
+        self._running = False
+
+    def is_running(self) -> bool:
+        """Returns whether the phase is currently running."""
+        return self._running
+
     def should_run(self, state: State[S, O, A, P]) -> bool:
-        """Return whether the phase should run."""
+        """Returns whether the phase should run."""
         if isinstance(self._run_interval, int):
-            return (state.timestamp.num_epochs + 1) % self._run_interval == 0
+            return (state.num_epochs + 1) % self._run_interval == 0
         else:
             return self._run_interval(state)
 
     def state_dict(self) -> dict[str, Any]:
         return {
+            "running": self._running,
+            "timestamp": self._timestamp.state_dict(),
             "dataloader": self._dataloader.state_dict(),
             "criterion": self._criterion.state_dict()
             if isinstance(self._criterion, Stateful)
@@ -130,28 +163,23 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
             "schedulers": tuple(
                 scheduler.state_dict() if isinstance(scheduler, Stateful) else None
                 for scheduler in self._schedulers
-            )
-            if self._schedulers is not None
-            else None,
+            ),
         }
 
     def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
+        self._running = state_dict["running"]
+        self._timestamp.load_state_dict(state_dict["timestamp"])
         self._dataloader.load_state_dict(state_dict["dataloader"])
 
         if isinstance(self._criterion, Stateful):
             self._criterion.load_state_dict(state_dict["criterion"])
 
-        for optimizer, optimizer_state in zip(
-            self._optimizers, state_dict["optimizers"], strict=True
-        ):
-            optimizer.load_state_dict(optimizer_state)
+        for o, o_state in zip(self._optimizers, state_dict["optimizers"], strict=True):
+            o.load_state_dict(o_state)
 
-        if self._schedulers is not None:
-            for scheduler, scheduler_state in zip(
-                self._schedulers, state_dict["schedulers"], strict=True
-            ):
-                if isinstance(scheduler, Stateful):
-                    scheduler.load_state_dict(scheduler_state)
+        for s, s_state in zip(self._schedulers, state_dict["schedulers"], strict=True):
+            if isinstance(s, Stateful):
+                s.load_state_dict(s_state)
 
     def to(self, device: str | torch.device, *, non_blocking: bool = False) -> Self:
         """Move in-place the phase to the specified device."""
@@ -164,14 +192,12 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
             else optimizer
             for optimizer in self._optimizers
         )
-
-        if self._schedulers is not None:
-            self._schedulers = tuple(
-                scheduler.to(device, non_blocking=non_blocking)
-                if isinstance(scheduler, Moveable)
-                else scheduler
-                for scheduler in self._schedulers
-            )
+        self._schedulers = tuple(
+            scheduler.to(device, non_blocking=non_blocking)
+            if isinstance(scheduler, Moveable)
+            else scheduler
+            for scheduler in self._schedulers
+        )
 
         if isinstance(self._evaluator, Moveable):
             self._evaluator = self._evaluator.to(device, non_blocking=non_blocking)
@@ -196,11 +222,9 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
             config["optimizers"] = [
                 utils.get_config(optimizer, recursive) for optimizer in self._optimizers
             ]
-            if self._schedulers is not None:
-                config["schedulers"] = [
-                    utils.get_config(scheduler, recursive)
-                    for scheduler in self._schedulers
-                ]
+            config["schedulers"] = [
+                utils.get_config(scheduler, recursive) for scheduler in self._schedulers
+            ]
 
             if self._evaluator is not None:
                 config["evaluator"] = utils.get_config(self._evaluator, recursive)
@@ -214,7 +238,7 @@ class TrainingPhase[S, O, A, P](Stateful, Configurable):
 
 
 class EvaluationPhase[S, O, A, P](Stateful, Configurable):
-    """An evaluation-like epoch phase."""
+    """An evaluation-like phase."""
 
     def __init__(
         self,
@@ -225,6 +249,8 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
         label: str = "eval",
     ) -> None:
         self._label = label
+        self._running = False
+        self._timestamp = PhaseTimestamp(dataloader.num_batches, dataloader.num_samples)
         self._dataloader = dataloader
         self._evaluator = evaluator
         self._criterion = criterion
@@ -238,6 +264,11 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
     def label(self) -> str:
         """The label of the phase."""
         return self._label
+
+    @property
+    def timestamp(self) -> PhaseTimestamp:
+        """The timestamp of the phase."""
+        return self._timestamp
 
     @property
     def dataloader(self) -> DataLoader[S, A, P]:
@@ -258,15 +289,34 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
+    def run(self) -> None:
+        """Runs the phase."""
+        self._running = True
+
+    def stop(self) -> None:
+        """Stops the phase."""
+        if not self._running:
+            msg = "Cannot stop a phase that is not running."
+            raise RuntimeError(msg)
+
+        self._timestamp.terminate_epoch()
+        self._running = False
+
+    def is_running(self) -> bool:
+        """Returns whether the phase is currently running."""
+        return self._running
+
     def should_run(self, state: State[S, O, A, P]) -> bool:
-        """Return whether the phase should run."""
+        """Returns whether the phase should run."""
         if isinstance(self._run_interval, int):
-            return (state.timestamp.num_epochs + 1) % self._run_interval == 0
+            return (state.num_epochs + 1) % self._run_interval == 0
         else:
             return self._run_interval(state)
 
     def state_dict(self) -> dict[str, Any]:
         return {
+            "running": self._running,
+            "timestamp": self._timestamp.state_dict(),
             "dataloader": self._dataloader.state_dict(),
             "evaluator": self._evaluator.state_dict()
             if isinstance(self._evaluator, Stateful)
@@ -277,6 +327,8 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
         }
 
     def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
+        self._running = state_dict["running"]
+        self._timestamp.load_state_dict(state_dict["timestamp"])
         self._dataloader.load_state_dict(state_dict["dataloader"])
 
         if isinstance(self._evaluator, Stateful):
@@ -286,7 +338,7 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
             self._criterion.load_state_dict(state_dict["criterion"])
 
     def to(self, device: str | torch.device, *, non_blocking: bool = False) -> Self:
-        """Move in-place the phase to the specified device."""
+        """Moves in-place the phase to the specified device."""
         if isinstance(self._evaluator, Moveable):
             self._evaluator = self._evaluator.to(device, non_blocking=non_blocking)
 
@@ -308,10 +360,3 @@ class EvaluationPhase[S, O, A, P](Stateful, Configurable):
                 config["criterion"] = utils.get_config(self._criterion, recursive)
 
         return config
-
-
-# --------------------------------------------------------------------------- #
-# Epoch Phase
-# --------------------------------------------------------------------------- #
-
-type EpochPhase[S, O, A, P] = TrainingPhase[S, O, A, P] | EvaluationPhase[S, O, A, P]

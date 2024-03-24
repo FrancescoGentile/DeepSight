@@ -10,8 +10,8 @@
 
 from typing import Protocol
 
+from deepsight import BatchLosses, State
 from deepsight.data import Batch
-from deepsight.training import BatchLosses, State
 
 
 class Callback[S, O, A, P](Protocol):

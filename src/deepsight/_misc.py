@@ -8,7 +8,7 @@ from typing import Any, Literal, Self
 
 import torch
 
-from deepsight.typing import Configurable, Tensor, str_enum
+from .typing import Configurable, Tensor, str_enum
 
 
 @dataclass(frozen=True)

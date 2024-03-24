@@ -4,6 +4,7 @@
 import hashlib
 import pickle
 import random
+import warnings
 from collections import Counter
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING
@@ -19,19 +20,18 @@ from deepsight.models import Model
 from deepsight.typing import Detachable, EnumLike
 
 from ._misc import BatchLosses, ClipGradNorm, ClipGradValue, Precision
-from ._phase import EpochPhase, EvaluationPhase, TrainingPhase
+from ._phase import EvaluationPhase, Phase, TrainingPhase
 from ._state import State
-from ._timestamp import Timestamp
 
 if TYPE_CHECKING:
     from .callbacks import Callback
 
 
-class Engine[S, O: Detachable, A, P]:
+class Engine[S, O, A, P]:
     def __init__(
         self,
         model: Model[S, O, A, P],
-        phases: Iterable[EpochPhase[S, O, A, P]],
+        phases: Iterable[Phase[S, O, A, P]],
         callbacks: Iterable["Callback[S, O, A, P]"] | None = None,
         device: torch.device | str | None = None,
         precision: EnumLike[Precision] = Precision.FP32,
@@ -78,7 +78,6 @@ class Engine[S, O: Detachable, A, P]:
             random.seed(digest)
             run_name = coolname.generate_slug(2)
             random.setstate(random_rng_state)
-
         elif len(run_name) == 0:
             msg = "The run name cannot be empty."
             raise ValueError(msg)
@@ -87,7 +86,6 @@ class Engine[S, O: Detachable, A, P]:
             run_name=run_name,
             model=model,
             phases=phases,
-            timestamp=Timestamp.new(phases),
             device=device,
             precision=precision,
             scaler=scaler,
@@ -132,7 +130,7 @@ class Engine[S, O: Detachable, A, P]:
             case None:
                 return False
             case int():
-                return self._state.timestamp.num_epochs >= self._max_duration
+                return self._state.num_epochs >= self._max_duration
             case _:
                 return self._max_duration(self._state)
 
@@ -142,15 +140,14 @@ class Engine[S, O: Detachable, A, P]:
 
         while self._state.current_phase_idx < len(self._state.phases):
             if self._state.current_phase.should_run(self._state):
-                self._execute_phase()
+                self._execute_phase(self._state.current_phase)
             self._state.next_phase()
 
         for callback in reversed(self._state.callbacks):
             callback.on_epoch_end(self._state)
 
-    def _execute_phase(self) -> None:
-        phase = self._state.current_phase
-        self._state.current_phase_timestamp.start()
+    def _execute_phase(self, phase: Phase[S, O, A, P]) -> None:
+        phase.run()
 
         match phase:
             case TrainingPhase():
@@ -158,7 +155,7 @@ class Engine[S, O: Detachable, A, P]:
             case EvaluationPhase():
                 self._execute_evaluation_phase(phase)
 
-        self._state.current_phase_timestamp.end()
+        phase.stop()
 
     # ----------------------------------------------------------------------- #
     # Evaluation
@@ -217,7 +214,7 @@ class Engine[S, O: Detachable, A, P]:
             for callback in reversed(self._state.callbacks):
                 callback.on_step_end(self._state)
 
-            self._state.current_phase_timestamp.next_batch(len(samples))
+            phase.timestamp.next_step(len(samples))
 
         for callback in reversed(self._state.callbacks):
             callback.on_phase_end(self._state)
@@ -252,7 +249,7 @@ class Engine[S, O: Detachable, A, P]:
             for callback in reversed(self._state.callbacks):
                 callback.on_step_end(self._state)
 
-            self._state.current_phase_timestamp.next_batch(len(samples))
+            phase.timestamp.next_step(len(samples))
 
         for callback in reversed(self._state.callbacks):
             callback.on_phase_end(self._state)
@@ -323,7 +320,18 @@ class Engine[S, O: Detachable, A, P]:
         for name, value in losses.items():
             losses[name] = value.detach()
 
-        output = output.detach()
+        if isinstance(output, Detachable):
+            output = output.detach()
+        elif phase.accumulation_steps > 1:
+            warnings.warn(
+                "The output of the model is not detachable and the number of "
+                "accumulation steps is greater than 1. This prevents the "
+                "computation graph from being released after each step, causing "
+                "an unnecessary increase in memory consumption. Consider implementing "
+                "the `deepsight.typing.Detachable` protocol for the model's output to "
+                "allow the computation graph to be released after each step.",
+                stacklevel=2,
+            )
 
         return output, losses
 
@@ -345,21 +353,14 @@ class Engine[S, O: Detachable, A, P]:
             case None:
                 pass
 
-        if phase.schedulers is not None:
-            for scheduler in phase.schedulers:
-                scheduler.step(self._state.current_phase_timestamp)
+        for scheduler in phase.schedulers:
+            scheduler.step(phase.timestamp)
 
         for optimizer in phase.optimizers:
             self._state.scaler.step(optimizer)
 
-        scale = self._state.scaler.get_scale()
+        self._state.scaler.get_scale()
         self._state.scaler.update()
-
-        if scale > self._state.scaler.get_scale():
-            # The scale factor has been decreased, which means that
-            # there was an overflow. Since no parameter update was
-            # performed, we do not call `scheduler.step()`.
-            utils.get_library_logger().warning("Gradient overflow detected.")
 
         for callback in reversed(self._state.callbacks):
             callback.on_optimization_end(self._state)
@@ -373,18 +374,20 @@ class Engine[S, O: Detachable, A, P]:
         outputs: list[O],
         golds: Batch[P],
     ) -> None:
-        if phase.evaluator is not None:
-            for callback in self._state.callbacks:
-                callback.on_evaluation_start(self._state)
+        if phase.evaluator is None:
+            return
 
-            golds = golds.to(self._state.device, non_blocking=True)
+        for callback in self._state.callbacks:
+            callback.on_evaluation_start(self._state)
 
-            with torch.no_grad():
-                predictions = Batch.concat([
-                    self._state.model.postprocess(output) for output in outputs
-                ])
+        golds = golds.to(self._state.device, non_blocking=True)
 
-                phase.evaluator.update(predictions, golds)
+        with torch.no_grad():
+            predictions = Batch.concat([
+                self._state.model.postprocess(output) for output in outputs
+            ])
 
-            for callback in reversed(self._state.callbacks):
-                callback.on_evaluation_end(self._state)
+            phase.evaluator.update(predictions, golds)
+
+        for callback in reversed(self._state.callbacks):
+            callback.on_evaluation_end(self._state)

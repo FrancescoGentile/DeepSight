@@ -20,10 +20,9 @@ from deepsight.models import Model
 from deepsight.typing import Moveable, Stateful
 
 from ._misc import Precision
-from ._timestamp import EpochPhaseTimestamp, Timestamp
 
 if TYPE_CHECKING:
-    from ._phase import EpochPhase
+    from ._phase import Phase
     from .callbacks import Callback
 
 
@@ -34,8 +33,7 @@ class State[S, O, A, P](Stateful):
         self,
         run_name: str,
         model: Model[S, O, A, P],
-        phases: tuple[EpochPhase[S, O, A, P], ...],
-        timestamp: Timestamp,
+        phases: tuple[Phase[S, O, A, P], ...],
         device: torch.device,
         precision: Precision,
         scaler: GradScaler,
@@ -47,7 +45,7 @@ class State[S, O, A, P](Stateful):
         self._model = model.to(device, non_blocking=True)
         self._phases = tuple(phase.to(device, non_blocking=True) for phase in phases)
         self._current_phase_idx = 0
-        self._timestamp = timestamp
+        self._num_epochs = 0
 
         self._device = device
         self._precision = precision
@@ -84,7 +82,7 @@ class State[S, O, A, P](Stateful):
         return self._model
 
     @property
-    def phases(self) -> tuple[EpochPhase[S, O, A, P], ...]:
+    def phases(self) -> tuple[Phase[S, O, A, P], ...]:
         """The phases."""
         return self._phases
 
@@ -94,19 +92,20 @@ class State[S, O, A, P](Stateful):
         return self._current_phase_idx
 
     @property
-    def current_phase(self) -> EpochPhase[S, O, A, P]:
+    def current_phase(self) -> Phase[S, O, A, P]:
         """The current phase."""
         return self._phases[self._current_phase_idx]
 
     @property
-    def current_phase_timestamp(self) -> EpochPhaseTimestamp:
-        """The current phase timestamp."""
-        return self.timestamp.phases[self.current_phase_idx]
+    def num_epochs(self) -> int:
+        """The number of epochs that have been run.
 
-    @property
-    def timestamp(self) -> Timestamp:
-        """The timestamp."""
-        return self._timestamp
+        This can also be interpreted as the index of the epoch currently being run.
+        Remember that epochs are 0-indexed. For example, if `num_epochs` is `5`, then
+        this means that 5 epochs have been fully run, and the 6th epoch (i.e. the epoch
+        with index 5) is currently being run.
+        """
+        return self._num_epochs
 
     @property
     def device(self) -> torch.device:
@@ -134,23 +133,27 @@ class State[S, O, A, P](Stateful):
 
     def next_epoch(self) -> None:
         """Moves to the next epoch."""
+        if any(phase.is_running() for phase in self._phases):
+            msg = "Cannot move to the next epoch while any phase is running."
+            raise RuntimeError(msg)
+
         self._current_phase_idx = 0
-        self._timestamp.next_epoch()
 
     def next_phase(self) -> None:
         """Moves to the next phase."""
-        if not self.current_phase_timestamp.has_ended():
-            msg = "Cannot move to the next phase before the current one has ended."
+        if self.current_phase.is_running():
+            msg = "Cannot move to the next phase while the current phase is running."
             raise RuntimeError(msg)
 
         self._current_phase_idx += 1
+        self._phases[self._current_phase_idx].run()
 
     def state_dict(self) -> dict[str, Any]:
         state = {
             "model": self._model.state_dict(),
             "phases": [phase.state_dict() for phase in self._phases],
             "current_phase_idx": self._current_phase_idx,
-            "timestamp": self._timestamp.state_dict(),
+            "num_epochs": self._num_epochs,
             "scaler": self._scaler.state_dict(),
             "callbacks": [
                 callback.state_dict() if isinstance(callback, Stateful) else None
@@ -173,11 +176,9 @@ class State[S, O, A, P](Stateful):
             phase.load_state_dict(phase_state)
 
         self._current_phase_idx = state_dict["current_phase_idx"]
-        self._timestamp.load_state_dict(state_dict["timestamp"])
+        self._num_epochs = state_dict["num_epochs"]
         self._scaler.load_state_dict(state_dict["scaler"])
 
-        for callback, callback_state in zip(
-            self._callbacks, state_dict["callbacks"], strict=True
-        ):
-            if isinstance(callback, Stateful):
-                callback.load_state_dict(callback_state)
+        for c, c_state in zip(self._callbacks, state_dict["callbacks"], strict=True):
+            if isinstance(c, Stateful):
+                c.load_state_dict(c_state)

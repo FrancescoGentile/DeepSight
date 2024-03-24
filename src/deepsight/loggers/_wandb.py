@@ -6,14 +6,14 @@ from typing import Any
 
 import wandb
 
-from deepsight import utils
-from deepsight.training import (
+from deepsight import (
     BatchLosses,
     EvaluationPhase,
     State,
     TrainingPhase,
+    utils,
 )
-from deepsight.training.callbacks import Callback
+from deepsight.callbacks import Callback
 from deepsight.typing import Stateful
 
 
@@ -90,7 +90,7 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         self._define_plots(state)
 
     def on_epoch_start(self, state: State[S, O, A, P]) -> None:
-        wandb.log({"epoch": state.timestamp.num_epochs + 1})
+        wandb.log({"epoch": state.num_epochs + 1})
 
     def on_step_loss(self, state: State[S, O, A, P], losses: BatchLosses) -> None:
         label = state.current_phase.label
@@ -111,7 +111,7 @@ class WandbLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
     def on_step_end(self, state: State[S, O, A, P]) -> None:
         label = state.current_phase.label
-        step = state.current_phase_timestamp.num_batches + 1
+        step = state.current_phase.timestamp.num_steps + 1
         if label not in self._log_phases:
             return
         if step % self._log_every_n_steps != 0:

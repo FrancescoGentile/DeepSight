@@ -6,10 +6,10 @@ from typing import Any
 
 from torch.optim import Optimizer
 
-from deepsight.training import EpochPhaseTimestamp
+from deepsight.time import PhaseTimestamp
 from deepsight.typing import Configurable
 
-from ._scheduler import LRScheduler
+from ._base import LRScheduler
 
 
 class ReciprocalLR(LRScheduler, Configurable):
@@ -51,15 +51,22 @@ class ReciprocalLR(LRScheduler, Configurable):
                 the current learning rate of each parameter group is set as the maximum
                 learning rate.
             warmup_steps: The number of warmup steps. If 0, no warmup is performed.
+
+        Raises:
+            ValueError: If `max_lr` is not a float or a sequence of floats with the same
+                length as the number of parameter groups in the optimizer.
+            ValueError: If `warmup_steps` is negative.
         """
+        super().__init__(optimizer)
+
         if max_lr is None:
-            max_lr = [float(group["lr"]) for group in optimizer.param_groups]
+            max_lr = [pg["lr"] for pg in self._optimizer.param_groups]
         elif isinstance(max_lr, float | int):
-            max_lr = [float(max_lr)] * len(optimizer.param_groups)
-        elif len(max_lr) != len(optimizer.param_groups):
+            max_lr = [float(max_lr)] * len(self._optimizer.param_groups)
+        elif len(max_lr) != len(self._optimizer.param_groups):
             msg = (
                 "Expected max_lr to be a float or a sequence of floats "
-                f"with length {len(optimizer.param_groups)}."
+                f"with length {len(self._optimizer.param_groups)}."
             )
             raise ValueError(msg)
 
@@ -67,7 +74,6 @@ class ReciprocalLR(LRScheduler, Configurable):
             msg = "Expected warmup_duration to be non-negative."
             raise ValueError(msg)
 
-        super().__init__(optimizer)
         self._max_lr = tuple(max_lr)
         self._warmup_steps = warmup_steps + 1
         self._warmup_deltas = tuple(lr / warmup_steps for lr in self._max_lr)
@@ -76,8 +82,8 @@ class ReciprocalLR(LRScheduler, Configurable):
     # Public Methods
     # ----------------------------------------------------------------------- #
 
-    def compute_lrs(self, timestamp: EpochPhaseTimestamp) -> tuple[float, ...]:
-        step = timestamp.num_batches
+    def compute_lrs(self, timestamp: PhaseTimestamp) -> tuple[float, ...]:
+        step = timestamp.num_steps
         if step < self._warmup_steps:
             # we are in the warmup period
             return tuple(delta * (step + 1) for delta in self._warmup_deltas)
@@ -96,11 +102,8 @@ class ReciprocalLR(LRScheduler, Configurable):
     # Magic Methods
     # ----------------------------------------------------------------------- #
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(max_lr={self._max_lr}, "
             f"warmup_duration={self._warmup_steps})"
         )
-
-    def __repr__(self) -> str:
-        return str(self)

@@ -5,9 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from deepsight import utils
-from deepsight.training import BatchLosses, EpochPhase, State, TrainingPhase
-from deepsight.training.callbacks import Callback
+from deepsight import BatchLosses, Phase, State, TrainingPhase, utils
+from deepsight.callbacks import Callback
 from deepsight.typing import Stateful
 
 
@@ -41,6 +40,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
                 utils.get_library_logger().addHandler(handler)
 
         self._losses: dict[str, float] | None = None
+        self._grad_scale: float | None = None
 
     def on_init(self, state: State[S, O, A, P]) -> None:
         log_start = self._logger.hasHandlers()
@@ -70,7 +70,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         self._logger.info("Starting training.")
 
     def on_epoch_start(self, state: State[S, O, A, P]) -> None:
-        self._logger.info("Epoch %d started.", state.timestamp.num_epochs + 1)
+        self._logger.info("Epoch %d started.", state.num_epochs + 1)
 
     def on_phase_start(self, state: State[S, O, A, P]) -> None:
         self._logger.info("Phase '%s' started.", state.current_phase.label)
@@ -89,6 +89,22 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
 
         for name, value in losses.items():
             self._losses[name] += value.item() * losses.batch_size
+
+    def on_optimization_start(self, state: State[S, O, A, P]) -> None:
+        self._grad_scale = state.scaler.get_scale()
+
+    def on_evaluation_end(self, state: State[S, O, A, P]) -> None:
+        scale = state.scaler.get_scale()
+        if scale != self._grad_scale:
+            self._logger.warning(
+                "Gradient overflow detected. "
+                "The gradient scale has been adjusted from %f to %f.",
+                self._grad_scale,
+                scale,
+            )
+            self._grad_scale = scale
+
+        self._grad_scale = None
 
     def on_phase_end(self, state: State[S, O, A, P]) -> None:
         phase = state.current_phase
@@ -111,7 +127,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
                 self._logger.info("\t%s: %f", name, value)
 
     def on_epoch_end(self, state: State[S, O, A, P]) -> None:
-        self._logger.info("Epoch %d finished.", state.timestamp.num_epochs + 1)
+        self._logger.info("Epoch %d finished.", state.num_epochs + 1)
 
     def on_run_end(
         self,
@@ -136,7 +152,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             self._logger.removeHandler(handler)
 
     def state_dict(self) -> dict[str, Any]:
-        return {"losses": self._losses}
+        return {"losses": self._losses, "grad_scale": self._grad_scale}
 
     def load_state_dict(self, state_dict: dict[str, Any]) -> Any:
         self._losses = state_dict["losses"]
@@ -160,9 +176,9 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
         # Log the phases
         self._logger.info("Phases:")
         for phase in state.phases:
-            self._log_phase(phase)
+            self._log_phase_info(phase)
 
-    def _log_phase(self, phase: EpochPhase[S, O, A, P]) -> None:
+    def _log_phase_info(self, phase: Phase[S, O, A, P]) -> None:
         self._logger.info("\tName: %s", phase.label)
 
         # Log the dataloader
@@ -175,7 +191,7 @@ class TextLogger[S, O, A, P](Callback[S, O, A, P], Stateful):
             for optimizer in phase.optimizers:
                 self._logger.info("\t\t%s", optimizer)
 
-            if phase.schedulers is not None:
+            if len(phase.schedulers) > 0:
                 self._logger.info("\tSchedulers:")
                 for scheduler in phase.schedulers:
                     self._logger.info("\t\t%s", scheduler)
