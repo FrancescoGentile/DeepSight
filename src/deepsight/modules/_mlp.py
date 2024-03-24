@@ -15,7 +15,6 @@ from torch import nn
 
 from deepsight.typing import Tensor
 
-from ._activations import Activation
 from ._module import Module
 
 
@@ -28,7 +27,7 @@ class FFN(Module):
         hidden_dim: int,
         output_dim: int | None = None,
         num_layers: int = 2,
-        activation: Callable[[], Activation and nn.Module] = nn.GELU,
+        activation: Callable[[], nn.Module] = nn.GELU,
         dropout: float = 0.0,
         bias: bool = True,
     ) -> None:

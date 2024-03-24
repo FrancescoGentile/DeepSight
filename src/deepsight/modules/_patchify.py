@@ -18,7 +18,6 @@ from deepsight import utils
 from deepsight.structures import BatchedImages
 
 from ._module import Module
-from ._norm import ImageNorm
 
 
 class ConvPatchify(Module):
@@ -29,7 +28,7 @@ class ConvPatchify(Module):
         patch_size: int | tuple[int, int],
         in_channels: int,
         embed_dim: int,
-        norm_layer: Callable[[int], ImageNorm] | None = None,
+        norm_layer: Callable[[int], nn.Module] | None = None,
         bias: bool = True,
     ) -> None:
         """Initializes the patchify layer.

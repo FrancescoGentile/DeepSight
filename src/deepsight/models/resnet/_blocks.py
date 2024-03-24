@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 from torch import nn
 
-from deepsight.modules import Activation, ImageNorm
 from deepsight.structures import BatchedImages
 
 # --------------------------------------------------------------------------- #
@@ -28,8 +27,8 @@ class BasicBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         stride: int = 1,
-        norm_layer: Callable[[int], ImageNorm and nn.Module] = nn.BatchNorm2d,
-        act_layer: Callable[[], Activation] = nn.ReLU,
+        norm_layer: Callable[[int], nn.Module] = nn.BatchNorm2d,
+        act_layer: Callable[[], nn.Module] = nn.ReLU,
     ) -> None:
         super().__init__()
 
@@ -131,8 +130,8 @@ class Bottleneck(nn.Module):
         groups: int = 1,
         base_channels: int = 64,
         dilation: int = 1,
-        norm_layer: Callable[[int], ImageNorm and nn.Module] = nn.BatchNorm2d,
-        act_layer: Callable[[], Activation] = nn.ReLU,
+        norm_layer: Callable[[int], nn.Module] = nn.BatchNorm2d,
+        act_layer: Callable[[], nn.Module] = nn.ReLU,
     ) -> None:
         super().__init__()
 

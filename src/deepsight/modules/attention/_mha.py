@@ -7,7 +7,7 @@ from typing import Literal
 import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
-from deepsight.modules import Module, SequenceNorm
+from deepsight.modules import Module
 from deepsight.typing import Tensor
 
 from ._mask import Mask
@@ -32,8 +32,8 @@ class MultiHeadAttention(Module):
         mechanism: AttentionMechanism,
         out_dim: int | None = None,
         qkv_dropout: float = 0.0,
-        q_norm: int | Callable[[int], SequenceNorm] | None = None,
-        k_norm: int | Callable[[int], SequenceNorm] | None = None,
+        q_norm: int | Callable[[int], nn.Module] | None = None,
+        k_norm: int | Callable[[int], nn.Module] | None = None,
         out_dropout: float = 0.0,
     ) -> None:
         """Initialize the multi-head attention module.
@@ -145,8 +145,8 @@ class MultiHeadAttentionWithPos(Module):
         mechanism: AttentionMechanism,
         out_dim: int | None = None,
         qkv_dropout: float = 0.0,
-        q_norm: int | Callable[[int], SequenceNorm] | None = None,
-        k_norm: int | Callable[[int], SequenceNorm] | None = None,
+        q_norm: int | Callable[[int], nn.Module] | None = None,
+        k_norm: int | Callable[[int], nn.Module] | None = None,
         out_dropout: float = 0.0,
     ) -> None:
         """Initialize the multi-head attention module.

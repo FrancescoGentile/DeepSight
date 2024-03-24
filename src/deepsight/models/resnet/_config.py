@@ -9,7 +9,6 @@ from typing import Self
 
 from torch import nn
 
-from deepsight.modules import Activation, ImageNorm
 from deepsight.typing import str_enum
 
 from ._blocks import BasicBlock, Bottleneck
@@ -39,8 +38,8 @@ class EncoderConfig:
     in_channels: int = 3
     block: type[BasicBlock | Bottleneck] = Bottleneck
     blocks_per_layer: tuple[int, int, int, int] = (3, 4, 6, 3)
-    act_layer: Callable[[], Activation] = partial(nn.ReLU, inplace=True)
-    norm_layer: Callable[[int], ImageNorm and nn.Module] = nn.BatchNorm2d
+    act_layer: Callable[[], nn.Module] = partial(nn.ReLU, inplace=True)
+    norm_layer: Callable[[int], nn.Module] = nn.BatchNorm2d
 
     @classmethod
     def from_variant(cls, variant: Variant | str) -> Self:

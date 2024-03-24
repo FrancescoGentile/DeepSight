@@ -1,7 +1,7 @@
 # Copyright 2024 The DeepSight Team.
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
 
 import torch
 from torch import nn
@@ -9,42 +9,6 @@ from torch import nn
 from deepsight.typing import Tensor
 
 from ._module import Module
-
-# --------------------------------------------------------------------------- #
-# Sequence normalization layers
-# --------------------------------------------------------------------------- #
-
-
-class SequenceNorm(Protocol):
-    """Interface for sequence normalization layers.
-
-    This interface is used to type hint normalization layers that
-    accept a sequence of vectors as input. It does not specify the
-    way in which the normalization is performed.
-    """
-
-    def __call__(
-        self, x: Tensor[Literal["... L D"], float]
-    ) -> Tensor[Literal["... L D"], float]: ...
-
-
-# --------------------------------------------------------------------------- #
-# Image normalization layers
-# --------------------------------------------------------------------------- #
-
-
-class ImageNorm(Protocol):
-    """Interface for image normalization layers.
-
-    This interface is used to type hint normalization layers that
-    accept an image as input. It does not specify the way in which
-    the normalization is performed.
-    """
-
-    def __call__(
-        self, x: Tensor[Literal["B C H W"], float]
-    ) -> Tensor[Literal["B C H W"], float]: ...
-
 
 # --------------------------------------------------------------------------- #
 # LayerNorm2D
